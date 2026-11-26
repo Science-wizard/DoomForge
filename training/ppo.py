@@ -181,6 +181,7 @@ def main() -> None:
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--n-envs", type=int, default=N_ENVS)
     ap.add_argument("--rollout", type=int, default=T_ROLLOUT)
+    ap.add_argument("--start-update", type=int, default=0)
     args = ap.parse_args()
 
     torch.set_num_threads(max(1, (torch.get_num_threads() // 2)))
@@ -201,7 +202,7 @@ def main() -> None:
     ep_done = [0 for _ in slots]
     best = -1e9
 
-    for update in range(args.updates):
+    for update in range(args.start_update, args.updates):
         progress = update / max(1, args.updates)
         buf = {"obs": [], "act": [], "logp": [], "val": [], "rew": [], "done": [], "h": []}
         for t in range(args.rollout):
@@ -219,7 +220,7 @@ def main() -> None:
             buf["act"].append(heads.cpu())
             buf["logp"].append(torch.as_tensor(logp))
             buf["val"].append(torch.as_tensor(vals))
-            buf["h"].append(torch.stack([hh[0] if hh is not None else torch.zeros(net.hidden) for hh in h]))
+            buf["h"].append(torch.stack([hh[0] if hh is not None else torch.zeros(1, net.hidden) for hh in h]))
             rew, dones = [], []
             for i, s in enumerate(slots):
                 a = actions
