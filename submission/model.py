@@ -36,6 +36,7 @@ RGB_H, RGB_W = 30, 40
 PREV = 12
 MAP_CH, MAP_H, MAP_W = 5, 32, 32
 POSE = 6
+GATE_IN = 30
 HIDDEN = 384
 
 HEADS = (("move", 3), ("strafe", 3), ("turn", 3), ("attack", 2), ("use", 2), ("next", 2))
@@ -188,6 +189,41 @@ class PrevEncoder(nn.Module):
 
     def forward(self, p: torch.Tensor) -> torch.Tensor:
         return self.net(p)
+
+
+def gate_features(batch: dict) -> torch.Tensor:
+    """Compact, observation-only routing features for the mixture-of-experts gate."""
+    d = batch["rays_dist"]
+    h = batch["rays_hit"]
+    v = batch["vitals"]
+    m = batch["map"]
+    p = batch["prev_action"]
+    door = ((h == 2) | (h == 3)).to(d.dtype)
+    locked = (h == 3).to(d.dtype)
+    front = d[..., :5]
+    min_front = front.min(dim=-1).values
+    door_any = door.max(dim=-1).values
+    door_front = door[..., :5].max(dim=-1).values
+    locked_any = locked.max(dim=-1).values
+    min_door = torch.where(door > 0.5, d, torch.ones_like(d)).min(dim=-1).values
+    keys = v[..., 8:14]
+    stats = v[..., 0:5]
+    map_means = m.mean(dim=(-1, -2))
+    prev = torch.stack([p[..., 7], p[..., 10], v[..., 14], v[..., 15]], dim=-1)
+    return torch.cat([front, min_front[..., None], door_any[..., None], door_front[..., None],
+                      locked_any[..., None], min_door[..., None], keys, stats, map_means, prev], dim=-1)
+
+
+class Gate(nn.Module):
+    """Learned per-step routing weight: 1 = door expert, 0 = arena expert."""
+
+    def __init__(self, hidden: int = 64):
+        super().__init__()
+        self.net = nn.Sequential(nn.Linear(GATE_IN, hidden), nn.GELU(),
+                                 nn.Linear(hidden, hidden), nn.GELU(), nn.Linear(hidden, 1))
+
+    def forward(self, f: torch.Tensor) -> torch.Tensor:
+        return torch.sigmoid(self.net(f))
 
 
 class DoomNet(nn.Module):

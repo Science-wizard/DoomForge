@@ -5,8 +5,9 @@ Contract (docs/CONTRACT.md §6):
     reset()
     act(observation) -> np.ndarray of shape (9,), values in {0,1}
 
-The agent is a pure forward pass of trained parameters.  It never imports the
-training package, vizdoom, or anything that touches the engine.
+The agent is a pure forward pass of trained parameters.  When the mixture-of-experts
+weights are present it routes between a tier-1 arena specialist and a door specialist;
+otherwise it runs the single shipped checkpoint.
 """
 
 from __future__ import annotations
@@ -19,20 +20,22 @@ import torch
 
 SUBMISSION_DIR = Path(__file__).resolve().parent
 WEIGHTS_DIR = SUBMISSION_DIR / "weights"
-WEIGHTS = WEIGHTS_DIR / "doomforge.pt"
+SINGLE = WEIGHTS_DIR / "doomforge.pt"
+ARENA = WEIGHTS_DIR / "arena.pt"
+DOOR = WEIGHTS_DIR / "door.pt"
+GATE = WEIGHTS_DIR / "gate.pt"
 
 try:  # normal case: the scorer puts submission/ on sys.path
-    from model import DoomNet
+    from model import DoomNet, Gate, gate_features
     from mapmem import MapBuilder
 except ImportError:  # package-style import
-    from submission.model import DoomNet
+    from submission.model import DoomNet, Gate, gate_features
     from submission.mapmem import MapBuilder
 
 RGB_H, RGB_W = 30, 40
 
 
-def _flatten(obs: dict, prev: np.ndarray | None, turn_held: int, use_last: int,
-             map_crop=None, pose=None) -> dict:
+def _flatten(obs: dict, prev, turn_held: int, use_last: int, map_crop=None, pose=None) -> dict:
     rays = obs["rays"]
     ent = obs["visible_entities"]
     rgb = np.asarray(obs["rgb"], dtype=np.uint8)
@@ -56,6 +59,13 @@ def _flatten(obs: dict, prev: np.ndarray | None, turn_held: int, use_last: int,
     }
 
 
+def _load(path: Path, device: str):
+    ckpt = torch.load(path, map_location="cpu", weights_only=True)
+    net = DoomNet(hidden=ckpt.get("config", {}).get("hidden", 384))
+    net.load_state_dict(ckpt["model"])
+    return net.to(device).eval()
+
+
 class DoomAgent:
     def __init__(self, observation_space, action_space, device: str):
         torch.set_num_threads(1)
@@ -65,10 +75,17 @@ class DoomAgent:
         if self.device == "cuda" and not torch.cuda.is_available():
             self.device = "cpu"
 
-        ckpt = torch.load(WEIGHTS, map_location="cpu", weights_only=True)
-        self.net = DoomNet(hidden=ckpt.get("config", {}).get("hidden", 384))
-        self.net.load_state_dict(ckpt["model"])
-        self.net.to(self.device).eval()
+        self.moe = ARENA.exists() and DOOR.exists() and GATE.exists()
+        if self.moe:
+            self.arena = _load(ARENA, self.device)
+            self.door = _load(DOOR, self.device)
+            gate_ck = torch.load(GATE, map_location=self.device, weights_only=True)
+            self.gate = Gate()
+            self.gate.load_state_dict(gate_ck["gate"])
+            self.gate.to(self.device).eval()
+            self.net = self.arena
+        else:
+            self.net = _load(SINGLE, self.device)
 
         self._warned = False
         self.reset()
@@ -77,6 +94,8 @@ class DoomAgent:
     # ------------------------------------------------------------------ contract
     def reset(self) -> None:
         self.h = None
+        self.h_a = None
+        self.h_d = None
         self.prev = None
         self.turn_held = 0
         self.use_last = 0
@@ -100,7 +119,13 @@ class DoomAgent:
                 "map": torch.as_tensor(flat["map"][None], device=self.device, dtype=torch.float32),
                 "pose": torch.as_tensor(flat["pose"][None], device=self.device),
             }
-            logits, value, aux, self.h = self.net.forward_step(batch, self.h)
+            if self.moe:
+                la, _, _, self.h_a = self.arena.forward_step(batch, self.h_a)
+                ld, _, _, self.h_d = self.door.forward_step(batch, self.h_d)
+                g = self.gate(gate_features(batch))
+                logits = g * ld + (1.0 - g) * la
+            else:
+                logits, _, _, self.h = self.net.forward_step(batch, self.h)
             heads = self.net.flat_action(logits, sample=False)
             a = self.net.actions_to_binary(heads)[0].cpu().numpy().astype(np.int8)
 
@@ -138,5 +163,10 @@ class DoomAgent:
         }
         with torch.inference_mode():
             for _ in range(3):
-                self.net.forward_step(z, None)
+                if self.moe:
+                    self.arena.forward_step(z, None)
+                    self.door.forward_step(z, None)
+                    self.gate(gate_features(z))
+                else:
+                    self.net.forward_step(z, None)
         self.reset()
