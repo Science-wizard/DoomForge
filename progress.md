@@ -103,10 +103,11 @@ observation (turn accuracy stuck at 43–49%); a deterministic pose+map is neces
 cuts drift 4×; door USE is learnable in two epochs from drills but overwrites arena
 behaviour without replay; the validator is not the score.
 
-**Failed iteration:** the focused arena-anchored door merge (`bc_combined`, drills +
-room-doors, KL anchor to `bc_arena`, 1 epoch) measured **tier 1 1/8, drills 0/8**. The
-anchor does not preserve the arena policy with this data mix; doors still do not
-generalise to rooms.
+**Failed iterations:** the focused arena-anchored door merge (`bc_combined`, drills +
+room-doors, KL anchor to `bc_arena`, 1 epoch) measured **tier 1 1/8, drills 0/8**. A
+success-only mixed replay (`bc_success`, 652 successful episodes, LR 5e-5) measured
+**tier 1 4/8, proxy +4.95; tier 2 −0.54; drills 0/8** — slightly worse than the arena
+specialist. Neither is shipped. Doors still do not generalise to rooms.
 
 **Phase 2 entry point:** replay-balanced BC/PPO (mix tiers in every batch), event
 tokens + scan matching, a dedicated door-approach objective, Freedoom MAP23–32

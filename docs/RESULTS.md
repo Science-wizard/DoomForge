@@ -61,7 +61,10 @@ The arena fine-tune is the clear Phase-1 winner; the door branch still wins door
    anchor does not preserve the arena policy under this data mix, and the USE head still
    does not generalise to rooms. “Add doors without forgetting” remains the Phase-2
    problem; the KL anchor alone is not the answer.
-7. **More arena data helps.** A low-LR fine-tune on 300 extra arena episodes
+7. **Success-only replay does not beat the arena specialist.** Fine-tuning on 652
+   successful episodes (nav+arena, LR 5e-5, 1 epoch) gives tier-1 **4/8** (+4.95), tier-2
+   **−0.54**, drills **0/8**. The arena checkpoint stays (5/8, +5.42, t2 −0.18).
+8. **More arena data helps.** A low-LR fine-tune on 300 extra arena episodes
    (53% teacher exits) raised held-out tier-1 exits from 2/8 to **5/8** and improved every
    proxy.
 
