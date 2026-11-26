@@ -216,7 +216,7 @@ def main() -> None:
                 logp = lp.cpu().numpy()
                 vals = value[:, 0].cpu().numpy()
             buf["obs"].append({k: v.detach().cpu() for k, v in batch.items()})
-            buf["act"].append(heads[:, 0].cpu())
+            buf["act"].append(heads.cpu())
             buf["logp"].append(torch.as_tensor(logp))
             buf["val"].append(torch.as_tensor(vals))
             buf["h"].append(torch.stack([hh[0] if hh is not None else torch.zeros(net.hidden) for hh in h]))
@@ -263,18 +263,18 @@ def main() -> None:
             for b in range(0, len(starts), MINIBATCH):
                 chunk = starts[b:b + MINIBATCH]
                 losses = []
-                for i, t0 in chunk:
-                    obs_win = {k: torch.stack([buf["obs"][t][k][i] for t in range(t0, t0 + WINDOW)])
+                for i, start in chunk:
+                    obs_win = {k: torch.stack([buf["obs"][t][k][i] for t in range(start, start + WINDOW)])
                                for k in buf["obs"][0]}
                     # add batch dimension and run through the encoder/GRU
                     obs_win = {k: v.unsqueeze(0) for k, v in obs_win.items()}
-                    hh = buf["h"][t0][i].view(1, 1, -1)
+                    hh = buf["h"][start][i].view(1, 1, -1)
                     emb = net.encode({k: v for k, v in obs_win.items()})
                     logits, value, aux, _ = net.forward_seq(emb, hh)
-                    act = torch.stack([buf["act"][t][i] for t in range(t0, t0 + WINDOW)]).unsqueeze(0)
-                    oldlp = torch.stack([buf["logp"][t][i] for t in range(t0, t0 + WINDOW)]).unsqueeze(0).detach()
-                    adv_w = adv[t0:t0 + WINDOW, i].unsqueeze(0)
-                    ret_w = ret[t0:t0 + WINDOW, i].unsqueeze(0)
+                    act = torch.stack([buf["act"][t][i] for t in range(start, start + WINDOW)]).unsqueeze(0)
+                    oldlp = torch.stack([buf["logp"][t][i] for t in range(start, start + WINDOW)]).unsqueeze(0).detach()
+                    adv_w = adv[start:start + WINDOW, i].unsqueeze(0)
+                    ret_w = ret[start:start + WINDOW, i].unsqueeze(0)
                     lp, ent = net.action_logprob_entropy(logits, act)
                     ratio = (lp - oldlp).exp()
                     s1 = ratio * adv_w
