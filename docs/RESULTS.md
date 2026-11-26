@@ -14,32 +14,33 @@ proxy = 10·exit + 3·key + 3·lock + 0.5·door + 0.3·new_sector (cap 10)
 
 | Checkpoint | What it is |
 |---|---|
-| `bc_map2_e0` | Map-aware multimodal BC on nav + arenas; shipped Phase-1 baseline |
+| `bc_map2_e0` | Map-aware multimodal BC on nav + arenas; earlier baseline |
 | `bc_use` | Drill-only fine-tune from a base checkpoint; learned doors, forgot arenas |
 | `bc_head` | Frozen trunk, actor-only fine-tune on drills; cannot learn door approach |
-| `bc_anchor` | KL-anchored full fine-tune on nav+arena+drills+room-doors |
+| `bc_arena` | Low-LR fine-tune on 300 extra arena episodes; **shipped** |
+| `bc_anchor` | KL-anchored full fine-tune; stopped before checkpoint (inconclusive) |
 
 ## Generated tiers
 
-| Suite | `bc_map2_e0` | `bc_use` | `bc_head` | `bc_anchor` |
+| Suite | `bc_map2_e0` | `bc_use` | `bc_head` | `bc_arena` |
 |---|---:|---:|---:|---:|
-| t1 arena: exits | **2/8** | 1/8 | 1/8 | — |
-| t1 proxy | +0.35 | **+0.89** | −1.53 | — |
-| t1 kills | 10 | **19** | 5 | — |
-| t2 rooms: exits | 0/8 | 0/8 | 0/8 | — |
-| t2 proxy | −0.99 | **−0.26** | −0.22 | — |
-| t2 coverage | 6.1% | 6.1% | 6.1% | — |
-| t3 key/lock: exits | 0/8 | 0/8 | 0/8 | — |
-| t3 proxy | −0.89 | **−0.70** | −0.87 | — |
-| t4 gauntlet: exits | 0/8 | 0/8 | 0/8 | — |
-| t4 proxy | −1.61 | **−1.41** | −2.17 | — |
-| Door drills: exits | 0/8 | **6/8** | 0/8 | — |
-| Freedoom 23–32: exits | 0/10 | not run | not run | — |
-| Freedoom proxy | −0.77 | not run | not run | — |
+| t1 arena: exits | 2/8 | 1/8 | 1/8 | **5/8** |
+| t1 proxy | +0.35 | +0.89 | −1.53 | **+5.42** |
+| t1 kills | 10 | **19** | 5 | 4 |
+| t2 rooms: exits | 0/8 | 0/8 | 0/8 | 0/8 |
+| t2 proxy | −0.99 | −0.26 | −0.22 | **−0.18** |
+| t2 coverage | 6.1% | 6.1% | 6.1% | 6.1% |
+| t3 key/lock: exits | 0/8 | 0/8 | 0/8 | 0/8 |
+| t3 proxy | −0.89 | −0.70 | −0.87 | **−0.38** |
+| t4 gauntlet: exits | 0/8 | 0/8 | 0/8 | 0/8 |
+| t4 proxy | −1.61 | −1.41 | −2.17 | **−0.73** |
+| Door drills: exits | 0/8 | **6/8** | 0/8 | 0/8 |
+| Freedoom 23–32: exits | 0/10 | not run | not run | not re-run |
+| Freedoom proxy | −0.77 | not run | not run | not re-run |
 
 Tier-weighted proxy (1, 1.2, 1.5, 2) over t1–t4:
-`bc_map2_e0` ≈ **−5.40**, `bc_use` ≈ **−3.29**. The door branch is ahead on the proxy
-despite one fewer tier-1 exit, because of kills and partial progression.
+`bc_map2_e0` ≈ **−5.40**, `bc_use` ≈ **−3.29**, `bc_arena` ≈ **+3.17**.
+The arena fine-tune is the clear Phase-1 winner; the door branch still wins door drills.
 
 ## What the numbers mean
 
@@ -54,8 +55,12 @@ despite one fewer tier-1 exit, because of kills and partial progression.
 5. **Full fine-tuning forgets.** Drill-only training drops tier-1 exits from 2/8 to 1/8
    and loses arena kills/exit behaviour. This is the central Phase-2 problem.
 6. **Room-door demonstrations are reliable** (200/200, random start heading) and are the
-   bridge to tier 2; the KL-anchored run tests whether they can be added without
-   forgetting.
+   bridge to tier 2. The first KL-anchored attempt was stopped at 140/149 batches before a
+   checkpoint, so the “add doors without forgetting” question is still open; the focused
+   arena-anchored merge is the next run.
+7. **More successful arena data helps.** A low-LR fine-tune on 300 extra arena episodes
+   (53% teacher exits) raised held-out tier-1 exits from 2/8 to **5/8** and improved every
+   proxy.
 
 ## Reproduce
 
