@@ -46,6 +46,10 @@ import numpy as np
 
 PRIV = 16
 IDLE_PENALTY = 0.01
+STAG_WINDOW = 16
+STAG_PENALTY = 0.02
+KEY_REWARD = 5.0
+SEEN_REWARD = 0.004
 SUITE_TRAIN = "training/data/suite/train/manifest.jsonl"
 ENEMY_TYPES = (1, 2, 3)
 _LOCK_TO_KEY = {1: 2, 2: 0, 3: 1}
@@ -226,6 +230,8 @@ class Slot:
         self.obj_kind, self.obj_d, self.obj_xy = self.obj.query(p["x"], p["y"], p["keys"])
         self.last_progress = 0
         self.idle = 0
+        self.pos_hist = deque([(p["x"], p["y"])], maxlen=STAG_WINDOW)
+        self.seen = int(self.map.ego[0].sum())
         self.ep = {"return": 0.0, "exit": 0, "keys": 0, "locks": 0, "doors": 0, "kills": 0,
                    "dead": 0, "steps": 0, "cat": cat}
         self.obs = obs
@@ -274,11 +280,23 @@ class Slot:
         self.steps += 1
         frac = self.steps / max(1, self.T)
         r = -0.001
-        # Idling (pure no-op) for more than 8 decisions is penalised: the
-        # forgetting mode found in Phase 5 was parking at a locked door.
-        self.idle = self.idle + 1 if int(np.asarray(action).sum()) == 0 else 0
-        if self.idle > 8:
-            r -= IDLE_PENALTY
+        # Stagnation: moving < 48 units over the last 16 decisions costs
+        # 0.02/step whatever buttons are pressed.  The forgetting mode found in
+        # Phase 5 was parking at a locked door and pressing USE every ~25 steps
+        # (a pure no-op counter is dodged by that).
+        self.pos_hist.append((p["x"], p["y"]))
+        if len(self.pos_hist) == STAG_WINDOW:
+            x0, y0 = self.pos_hist[0]
+            if math.hypot(p["x"] - x0, p["y"] - y0) < 48.0:
+                r -= STAG_PENALTY
+        # USE on a locked door without any key is wasted.
+        a_np = np.asarray(action)
+        if int(a_np[7]) and float(np.asarray(p["keys"]).sum()) < 0.5:
+            hit = np.asarray(self.obs["rays"]["hit_type"])
+            dist = np.asarray(self.obs["rays"]["distance"])
+            front = [0, 1, 2, 62, 63]
+            if np.any((hit[front] == 3) & (dist[front] < 0.12)):
+                r -= 0.02
         if p["exit_reached"]:
             r += 10.0 + 2.0 * max(0.0, 1.0 - frac)
             self.ep["exit"] = 1
@@ -296,7 +314,7 @@ class Slot:
         self.damage = p["damage_taken"]
         nk = int((np.asarray(p["keys"]) > 0.5).sum())
         if nk > self.keys:
-            r += 3.0 * (nk - self.keys)
+            r += KEY_REWARD * (nk - self.keys)
             self.ep["keys"] += nk - self.keys
             self.last_progress = self.steps
         self.keys = nk
@@ -333,6 +351,15 @@ class Slot:
             obs = self.reset(weights)
         else:
             self.map.update(obs, action)
+            # Dense exploration signal from the agent's own map: newly seen
+            # free floor (64-unit cells).  The policy can observe this, so it
+            # is learnable everywhere, unlike the exit location.
+            seen = int(self.map.ego[0].sum())
+            if seen > self.seen:
+                bonus = min(0.1, SEEN_REWARD * (seen - self.seen))
+                r += bonus
+                self.ep["return"] += bonus
+            self.seen = seen
             self.prev, self.turn_held, self.use_last = step_prev(action, self.prev,
                                                                  self.turn_held, self.use_last)
             self.obs, self.p = obs, p
@@ -423,6 +450,47 @@ def run_gru_masked(net, emb, h0, starts):
     return net.actor(z), z
 
 
+def bc_loss(net, windows: list, batch: int, device: str):
+    """Teacher cross-entropy on random demo windows (DAPG-style regulariser)."""
+    import torch
+    import torch.nn.functional as F
+    from submission.model import HEAD_SIZES
+    from training.egomaps import unpack_torch
+    sel = [windows[i] for i in np.random.randint(0, len(windows), size=batch)]
+    T = max(len(w["action"]) for w in sel)
+    B = len(sel)
+    def pad(key, dtype, shape):
+        out = np.zeros((B, T) + shape, dtype)
+        for i, w in enumerate(sel):
+            out[i, :len(w["action"])] = w[key]
+        return out
+    mask = np.zeros((B, T), np.float32)
+    for i, w in enumerate(sel):
+        mask[i, :len(w["action"])] = 1.0
+    obs = {
+        "rays_dist": torch.from_numpy(pad("dist", np.float32, (64,))),
+        "rays_hit": torch.from_numpy(pad("hit", np.int64, (64,))),
+        "ent_feat": torch.from_numpy(pad("efeat", np.float32, (32, 5))),
+        "ent_type": torch.from_numpy(pad("etype", np.int64, (32,))),
+        "ent_mask": torch.from_numpy(pad("emask", np.float32, (32,))),
+        "vitals": torch.from_numpy(pad("vitals", np.float32, (17,))),
+        "rgb": torch.from_numpy(pad("rgb", np.float32, (3, 30, 40))) / 255.0,
+        "prev_action": torch.from_numpy(pad("prev", np.float32, (12,))),
+        "pose": torch.from_numpy(pad("pose", np.float32, (6,))),
+    }
+    obs = {k: v.to(device) for k, v in obs.items()}
+    obs["map"] = unpack_torch(torch.from_numpy(pad("map", np.int32, (32, 32))).to(device))
+    heads = torch.from_numpy(pad("heads", np.int64, (6,))).to(device)
+    mk = torch.from_numpy(mask).to(device)
+    emb = net.encode(obs)
+    logits, _, _, _ = net.forward_seq(emb)
+    loss = 0.0
+    for j, part in enumerate(torch.split(logits, HEAD_SIZES, dim=-1)):
+        ce = F.cross_entropy(part.reshape(-1, part.shape[-1]), heads[..., j].reshape(-1), reduction="none")
+        loss = loss + (ce * mk.reshape(-1)).sum() / mk.sum().clamp(min=1.0)
+    return loss
+
+
 def main() -> None:
     import torch
     import torch.nn.functional as F
@@ -453,6 +521,11 @@ def main() -> None:
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--anchor", default="", help="KL anchor checkpoint (default: --init)")
     ap.add_argument("--mastered-weight", type=float, default=0.35)
+    ap.add_argument("--bc-data", default="", help="demo dirs (with ego/ maps) for an imitation loss")
+    ap.add_argument("--bc-weight", type=float, default=0.0)
+    ap.add_argument("--bc-weight-final", type=float, default=0.0)
+    ap.add_argument("--bc-batch", type=int, default=8)
+    ap.add_argument("--save-every", type=int, default=50)
     args = ap.parse_args()
 
     device = args.device if (args.device != "mps" or torch.backends.mps.is_available()) else "cpu"
@@ -482,6 +555,15 @@ def main() -> None:
     opt = torch.optim.Adam([{"params": policy_params, "lr": args.lr},
                             {"params": critic_params, "lr": 3e-4}], eps=1e-5)
 
+    bc_windows: list = []
+    if args.bc_data and args.bc_weight > 0:
+        from training.bc import load_episodes, window_episodes
+        eps = load_episodes(args.bc_data, arch="ego")
+        keep = ("dist", "hit", "efeat", "etype", "emask", "vitals", "rgb", "prev", "map", "pose",
+                "heads", "action")
+        eps = [{**{k: e[k] for k in keep}, "meta": e["meta"]} for e in eps]
+        bc_windows = window_episodes(eps, 64, 64)
+        print(f"imitation loss: {len(bc_windows)} demo windows", flush=True)
     cats = [c for c in args.categories.split(",") if c]
     W, K = args.workers, args.envs_per_worker
     E = W * K
@@ -524,6 +606,7 @@ def main() -> None:
         t0 = time.time()
         progress = update / max(1, args.updates)
         kl_beta = args.kl_beta + (args.kl_beta_final - args.kl_beta) * min(1.0, progress / 0.5)
+        bc_w = args.bc_weight + (args.bc_weight_final - args.bc_weight) * progress
         net.eval()
         t_inf = t_wait = 0.0
         # Double-buffered rollout: the workers of one half step their envs while
@@ -667,6 +750,8 @@ def main() -> None:
                             kla = kla + (F.softmax(ref_l, -1) * (F.log_softmax(ref_l, -1)
                                                                 - F.log_softmax(cur_l, -1))).sum(-1).mean()
                     loss = pg - args.ent * ent + kl_beta * kla + vf + 0.1 * vf_plain
+                    if bc_windows and bc_w > 0:
+                        loss = loss + bc_w * bc_loss(net, bc_windows, args.bc_batch, device)
                     with torch.no_grad():
                         akl = ((ratio - 1) - (lp - oldlp)).mean()
                         cf = ((ratio - 1).abs() > args.clip).float().mean()
@@ -702,7 +787,7 @@ def main() -> None:
             state = {"model": net.state_dict(), "config": {"hidden": net.hidden, "arch": "ego"},
                      "update": update, "steps": total_steps}
             torch.save(state, out / "ckpt.pt")
-            if (update + 1) % 50 == 0:
+            if (update + 1) % args.save_every == 0:
                 torch.save(state, out / f"ckpt_u{update + 1:04d}.pt")
 
     for c in conns:
