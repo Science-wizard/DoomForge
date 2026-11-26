@@ -173,8 +173,9 @@ The shipped checkpoint is the **tier-1 model** (`bc_map2` epoch 0). Phase 2 must
 arena exits and door skills without catastrophic forgetting; the KL-anchored replay
 experiment is the current attempt.
 
-The full lab log is in [`progress.md`](progress.md); the 24-hour plan and gates are in
-[`PLAN.md`](PLAN.md).
+The full lab log is in [`progress.md`](progress.md), the benchmark method and every
+per-checkpoint row is in [`docs/RESULTS.md`](docs/RESULTS.md), and the 24-hour plan and gates
+are in [`PLAN.md`](PLAN.md).
 
 ---
 
