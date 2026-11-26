@@ -152,7 +152,8 @@ def collate(batch: list[dict], device: str) -> dict:
     return {k: v.to(device) for k, v in out.items()}
 
 
-def batch_loss(net: DoomNet, batch: dict) -> tuple[torch.Tensor, dict]:
+def batch_loss(net: DoomNet, batch: dict, anchor: DoomNet | None = None,
+               anchor_weight: float = 0.0) -> tuple[torch.Tensor, dict]:
     emb = net.encode({k: batch[k] for k in
                       ("rays_dist", "rays_hit", "ent_feat", "ent_type", "ent_mask", "vitals", "rgb", "prev_action", "map", "pose")})
     logits, value, aux, _ = net.forward_seq(emb)
@@ -194,8 +195,25 @@ def batch_loss(net: DoomNet, batch: dict) -> tuple[torch.Tensor, dict]:
     aux_loss = keys + enemy + door + evis + kcol + bear + dist + dmg
     v_loss = (F.mse_loss(value[..., 0], batch["returns"], reduction="none") * m).sum() / denom
     loss = ce + 0.2 * aux_loss + 0.5 * v_loss
+
+    kl = torch.zeros((), device=loss.device)
+    if anchor is not None and anchor_weight > 0:
+        with torch.no_grad():
+            a_emb = anchor.encode({k: batch[k] for k in
+                                   ("rays_dist", "rays_hit", "ent_feat", "ent_type", "ent_mask",
+                                    "vitals", "rgb", "prev_action", "map", "pose")})
+            a_logits, _, _, _ = anchor.forward_seq(a_emb)
+        # preserve the base policy on non-door frames; let *any* visible door frame change
+        door_any = ((batch["rays_hit"] == 2) | (batch["rays_hit"] == 3)).any(-1).float()
+        keep = ((1.0 - door_any) * m)
+        kl_terms = []
+        for cur, ref in zip(torch.split(logits, HEAD_SIZES, dim=-1), torch.split(a_logits, HEAD_SIZES, dim=-1)):
+            kl_terms.append(F.kl_div(F.log_softmax(cur, -1), F.softmax(ref, -1),
+                                     reduction="none").sum(-1))
+        kl = (torch.stack(kl_terms, 0).sum(0) * keep).sum() / keep.sum().clamp(min=1.0)
+        loss = loss + anchor_weight * kl
     return loss, {"ce": ce.detach(), "aux": aux_loss.detach(), "value": v_loss.detach(),
-                  "exit": evis.detach(), "bear": bear.detach()}
+                  "exit": evis.detach(), "bear": bear.detach(), "kl": kl.detach()}
 
 
 def evaluate_quick(net: DoomNet, device: str, n_maps: int = 4, seed: int = 10_000) -> dict:
@@ -227,6 +245,10 @@ def main() -> None:
     ap.add_argument("--window", type=int, default=128)
     ap.add_argument("--stride", type=int, default=64)
     ap.add_argument("--drill-repeat", type=int, default=3)
+    ap.add_argument("--freeze", default="", choices=("", "head", "trunk"),
+                    help="head: train actor only; trunk: freeze encoders+GRU")
+    ap.add_argument("--anchor", default="", help="frozen checkpoint for a KL anchor")
+    ap.add_argument("--anchor-weight", type=float, default=0.5)
     args = ap.parse_args()
 
     torch.set_num_threads(min(8, os.cpu_count() or 4))
@@ -252,6 +274,23 @@ def main() -> None:
         ckpt = torch.load(args.resume, map_location=device)
         net.load_state_dict(ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt)
         print("resumed", args.resume)
+    anchor = None
+    if args.anchor:
+        a_ck = torch.load(args.anchor, map_location=device)
+        anchor = DoomNet(hidden=a_ck.get("config", {}).get("hidden", 384))
+        anchor.load_state_dict(a_ck["model"] if "model" in a_ck else a_ck)
+        anchor.to(device).eval()
+        for p_ in anchor.parameters():
+            p_.requires_grad_(False)
+        print("anchor", args.anchor)
+    if args.freeze == "head":
+        for name, p_ in net.named_parameters():
+            p_.requires_grad_(name.startswith("actor"))
+        print("frozen: all but actor")
+    elif args.freeze == "trunk":
+        for name, p_ in net.named_parameters():
+            p_.requires_grad_(name.startswith("actor") or name.startswith("critic") or name.startswith("aux"))
+        print("frozen: encoders + GRU + trunk")
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -266,7 +305,7 @@ def main() -> None:
         for b in range(steps_per_epoch):
             idx = chunks[order_chunks[b]]
             batch = collate([train[i] for i in idx], device)
-            loss, parts = batch_loss(net, batch)
+            loss, parts = batch_loss(net, batch, anchor, args.anchor_weight)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
@@ -287,7 +326,7 @@ def main() -> None:
                 vb = []
                 for i in range(0, len(val), args.batch):
                     batch = collate(val[i:i + args.batch], device)
-                    l, _ = batch_loss(net, batch)
+                    l, _ = batch_loss(net, batch, anchor, args.anchor_weight)
                     vb.append(float(l))
                 val_loss = float(np.mean(vb))
             net.train()

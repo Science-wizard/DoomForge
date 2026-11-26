@@ -155,42 +155,23 @@ weights are hidden.
 > Proxy numbers from `training/evaluate.py` on held-out seeds and Freedoom MAP23–32.
 > The official scorer is hidden; these are not claimed as leaderboard scores.
 
-| Split | Exit | Keys | Unique sectors | Proxy |
-|---|---:|---:|---:|---:|
-| Generated tier 1 (combat) | **2/2** | 0 | 100% | **+11.4** |
-| Generated tier 2 (exploration) | 0/2 | 0 | 5.9% | −1.9 |
-| Generated tier 3 (key → lock) | 0/2 | 0 | 3.6% | 0.0 |
-| Generated tier 4 (gauntlet) | 0/2 | 0 | 2.1% | −2.2 |
-| Freedoom MAP23–32 (unseen) | not run | — | — | — |
-| Door drills *(research branch, not shipped)* | 4/4 | 1 | 100% | +11.7 |
+| Split | Exit | Keys | Doors | Unique sectors | Proxy |
+|---|---:|---:|---:|---:|---:|
+| Generated tier 1 (combat) | **2/8** | 0 | 0 | 100% | **+0.35** |
+| Generated tier 2 (exploration) | 0/8 | 0 | 2 | 6.1% | −0.99 |
+| Generated tier 3 (key → lock) | 0/8 | 0 | 0 | 3.7% | −0.89 |
+| Generated tier 4 (gauntlet) | 0/8 | 0 | 2 | 2.4% | −1.61 |
+| Door drills | 0/8 | 0 | 0 | 35% | +0.45 |
+| Freedoom MAP23–32 (unseen) | 0/10 | 0 | 3 | 1.1% | −0.77 |
 
-The shipped checkpoint is the **tier-1 model** (`bc_map2` epoch 0). A separate
-drill-only fine-tune (`bc_use`) learned doors and keys (4/4 on 1-door and key drills)
-but catastrophically forgot arena exits; the balanced fine-tune (`bc_mix`) did neither.
-This is the concrete Phase-2 problem: replay/distillation or PPO must retain both.
+**Eight maps per generated tier**, fixed bench seeds `30000+` (never used for training),
+one engine seed, Freedoom MAP23–32 held out. This is the honest number; the earlier
+“2/2” was a two-map eval and is superseded. A separate drill-only branch reaches
+**6/8 door drills** but trades away arena exits (see `progress.md`).
 
-<p align="center">
-  <img src="docs/assets/training.png" alt="Training curves" width="48%">
-  <img src="docs/assets/results.png" alt="Held-out results" width="48%">
-</p>
-
-### What the experiments found (Phase 1)
-
-- **Turn prediction is the bottleneck.** With a global A* teacher, teacher-forced turn
-  accuracy stayed at **43%** (chance 33%) after four BC epochs: the turn label depends on
-  a global waypoint the agent cannot see. Move/strafe/attack reached 86/76/92%.
-- **A map fixes part of it.** Adding a deterministic pose + visited map raised turn
-  accuracy to ~49% after one epoch and cut heading drift from 63° to 16° over 250 steps.
-- **Odometry matters.** The first map version collapsed the measured turn table to a
-  constant 14.06°/decision and integrated velocity one step late; correcting both cut
-  position error from 907 to 361 units and heading error from 63° to 16°.
-- **Tier 1 works.** The first map-aware checkpoint exits **2/2** held-out arenas, with
-  four kills in one, at 100% sector coverage.
-- **Doors were the missing data, not the missing model.** The first BC set contained
-  zero closed doors, so the USE head learned “never use” and every tier-2 run stopped at
-  the first door. 360/360 reliable drill episodes (1 door, door+key, two doors) were
-  added; the USE head is now weighted 10× on door-adjacent frames.
-- **The validator is not the score.** It passes with p50 1.0 ms; skill is the open problem.
+The shipped checkpoint is the **tier-1 model** (`bc_map2` epoch 0). Phase 2 must combine
+arena exits and door skills without catastrophic forgetting; the KL-anchored replay
+experiment is the current attempt.
 
 The full lab log is in [`progress.md`](progress.md); the 24-hour plan and gates are in
 [`PLAN.md`](PLAN.md).

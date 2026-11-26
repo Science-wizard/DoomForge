@@ -206,6 +206,36 @@ plan's “keep 20–30% of earlier stages in every batch” rule was violated.
 `demos_all + demos_drills` (drill repeat 1, weighted USE loss, 2 epochs). The final
 checkpoint is selected by held-out proxy score, not by training loss.
 
+### Broad bench (no cherry-picking)
+
+The two-map eval was optimistic. A fixed bench (8 maps per generated tier, seeds
+30,000+, one engine seed; Freedoom MAP23–32 held out) gives the real picture:
+
+| Suite | Shipped tier-1 model | Door branch | Head-only door fine-tune |
+|---|---:|---:|---:|
+| t1 arena | **2/8**, +0.35, 10 kills | 1/8, +0.89, 19 kills | 1/8, −1.53 |
+| t2 rooms | 0/8, −0.99, 6.1% cov | 0/8, −0.26 | 0/8, −0.22 |
+| t3 key/lock | 0/8, −0.89 | 0/8, −0.70 | 0/8, −0.87 |
+| t4 gauntlet | 0/8, −1.61 | 0/8, −1.41 | 0/8, −2.17 |
+| door drills | 0/8 | **6/8**, +9.12 | 0/8 |
+| Freedoom 23–32 | 0/10, −0.77, 1.1% cov | not run | not run |
+
+**Findings:** the tier-1 exit rate is 25%, not 100%; doors are learnable (6/8 drills)
+but do not transfer to room doors; freezing the trunk and training only the actor cannot
+learn door approach (0/8 drills). The bench is the selection metric from here on.
+
+### Room-door demonstrations and KL anchoring
+
+To bridge “straight drill” to “door on a room wall”, a new generator places one or two
+doors on a room wall with a random start position and heading. The teacher solves
+**200/200** in 34 s, so the demonstrations are reliable.
+
+The next iteration trains the full network on the mixed pool with:
+- a frozen KL anchor to the tier-1 checkpoint on **non-door frames**, so arena/nav
+  behaviour is preserved;
+- door-visible frames free to adapt to drills and room-door data;
+- LR 1e-4, 2 epochs.
+
 ### Next experiment
 
 1. BC with maps on the same 100,921 transitions. Measure teacher-forced turn accuracy

@@ -188,7 +188,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--episodes", type=int, default=100)
     ap.add_argument("--out", default="training/data/demos")
-    ap.add_argument("--source", default="gen", choices=("gen", "freedoom", "freedoom_nav", "drill", "mix"))
+    ap.add_argument("--source", default="gen", choices=("gen", "freedoom", "freedoom_nav", "drill", "roomdoor", "mix"))
     ap.add_argument("--split", default="train", choices=("train", "val"))
     ap.add_argument("--tier", type=int, default=0, help="0 = randomise 2..4")
     ap.add_argument("--no-doors", action="store_true")
@@ -213,7 +213,12 @@ def main() -> None:
         src = args.source
         if src == "mix":
             src = "gen" if rng.random() < 0.5 else "freedoom_nav"
-        if src == "drill":
+        if src == "roomdoor":
+            from training.maps.doorroom import generate_room_door
+            spec = generate_room_door(args.seed * 100000 + i, "training/data/maps",
+                                      key=False, two_doors=bool(i % 2))
+            wad, map_name, tag = str(spec.path), spec.map_name, "roomdoor"
+        elif src == "drill":
             from training.maps.drills import generate_drill
             spec = generate_drill(args.seed * 100000 + i, "training/data/maps",
                                   n_doors=args.drill_doors, key=args.drill_key)
