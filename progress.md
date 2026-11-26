@@ -80,6 +80,33 @@ below as evidence, but the status table here is authoritative.
 
 ---
 
+## Phase 1 close (hand-off to Phase 2)
+
+**Shipped checkpoint:** `training/runs/bc_map2/ckpt_e0.pt` (copied to
+`submission/weights/doomforge.pt`). Map-aware multimodal BC, 1.807 M parameters.
+
+| Check | Result |
+|---|---|
+| Official validator (2 runs) | **PASSED**, init 0.4 s, p50 1.0–1.2 ms, p99 1.7–1.9 ms, max 3 ms |
+| Held-out tier 1 (generated) | **2/2 exits**, 4 kills in one, 100% sector coverage, proxy +11.4 |
+| Held-out tier 2 | 0/2, 5.9% coverage, proxy −1.9 |
+| Held-out tier 3 | 0/2, 3.6% coverage, proxy 0.0 |
+| Held-out tier 4 | 0/2, 2.1% coverage, proxy −2.2 |
+| Door research branch (`bc_use`) | **4/4** on 1-door and key drills, but **0/2 tier 1** (catastrophic forgetting) |
+| Repo | private `Science-wizard/DoomForge`, LFS weight, tracked size 7.7 MB |
+
+**What was learned:** exits and key colours are invisible to the structured contract and
+must be learned from RGB; a global-path teacher is not imitable from a single
+observation (turn accuracy stuck at 43–49%); a deterministic pose+map is necessary and
+cuts drift 4×; door USE is learnable in two epochs from drills but overwrites arena
+behaviour without replay; the validator is not the score.
+
+**Phase 2 entry point:** replay-balanced BC/PPO (mix tiers in every batch), event
+tokens + scan matching, Freedoom MAP23–32 held-out evaluation, then freeze at the
+deadline.
+
+---
+
 ## Phase 1 result: Baseline A is not Markovian enough — pivot to B+ minimal
 
 ### What happened
