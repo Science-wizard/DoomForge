@@ -1,0 +1,241 @@
+"""Behaviour cloning on privileged-expert demonstrations (Baseline A).
+
+Losses:
+  * cross-entropy on the six factorised action heads
+  * auxiliary heads: keys held, enemy visible, door ahead, exit visible,
+    exit bearing (13 classes), exit distance (6 bins), key colours visible,
+    damage over the next 8 decisions
+  * Monte-Carlo value head on the environment reward
+
+Usage:
+    python -m training.bc --data training/data/demos_all --epochs 6
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import time
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+from submission.model import (AUX_DAMAGE, AUX_DOOR, AUX_ENEMY, AUX_EXIT_BEARING,
+                              AUX_EXIT_DIST, AUX_EXIT_VIS, AUX_KEY_COLOURS, AUX_KEYS,
+                              HEAD_SIZES, DoomNet, vector_to_actions)
+
+
+def load_episodes(data_dir: str | Path, min_steps: int = 8) -> list[dict]:
+    data_dir = Path(data_dir)
+    eps = []
+    for line in (data_dir / "manifest.jsonl").read_text().splitlines():
+        row = json.loads(line)
+        path = data_dir / row["file"]
+        if not path.exists():
+            continue
+        with np.load(path) as z:
+            ep = {k: z[k] for k in z.files}
+        if len(ep["action"]) < min_steps:
+            continue
+        ep["meta"] = row
+        ep["heads"] = np.stack([np.array(vector_to_actions(a), np.int64) for a in ep["action"]])
+        eps.append(ep)
+    return eps
+
+
+def collate(batch: list[dict], device: str) -> dict:
+    T = max(len(ep["action"]) for ep in batch)
+    B = len(batch)
+    out = {
+        "rays_dist": torch.zeros(B, T, 64),
+        "rays_hit": torch.zeros(B, T, 64, dtype=torch.long),
+        "ent_feat": torch.zeros(B, T, 32, 5),
+        "ent_type": torch.zeros(B, T, 32, dtype=torch.long),
+        "ent_mask": torch.zeros(B, T, 32),
+        "vitals": torch.zeros(B, T, 17),
+        "rgb": torch.zeros(B, T, 3, 30, 40),
+        "prev": torch.zeros(B, T, 12),
+        "heads": torch.zeros(B, T, 6, dtype=torch.long),
+        "keys": torch.zeros(B, T, 6),
+        "aux": torch.zeros(B, T, 35),
+        "bear": torch.full((B, T), -100, dtype=torch.long),
+        "dist": torch.full((B, T), -100, dtype=torch.long),
+        "reward": torch.zeros(B, T),
+        "mask": torch.zeros(B, T),
+    }
+    for i, ep in enumerate(batch):
+        n = len(ep["action"])
+        out["rays_dist"][i, :n] = torch.from_numpy(ep["dist"].astype(np.float32))
+        out["rays_hit"][i, :n] = torch.from_numpy(ep["hit"].astype(np.int64))
+        out["ent_feat"][i, :n] = torch.from_numpy(ep["efeat"].astype(np.float32))
+        out["ent_type"][i, :n] = torch.from_numpy(ep["etype"].astype(np.int64))
+        out["ent_mask"][i, :n] = torch.from_numpy(ep["emask"].astype(np.float32))
+        out["vitals"][i, :n] = torch.from_numpy(ep["vitals"].astype(np.float32))
+        out["rgb"][i, :n] = torch.from_numpy(ep["rgb"].astype(np.float32)) / 255.0
+        out["prev"][i, :n] = torch.from_numpy(ep["prev"].astype(np.float32))
+        out["heads"][i, :n] = torch.from_numpy(ep["heads"])
+        out["keys"][i, :n] = torch.from_numpy(ep["keys"].astype(np.float32))
+        out["reward"][i, :n] = torch.from_numpy(ep["reward"].astype(np.float32))
+        out["mask"][i, :n] = 1.0
+        ev = torch.from_numpy(ep["exit_visible"].astype(np.float32))
+        out["aux"][i, :n, AUX_KEYS] = out["keys"][i, :n]
+        enemy = (((ep["etype"] == 1) | (ep["etype"] == 2) | (ep["etype"] == 3))
+                 & (ep["emask"] > 0)).any(axis=1).astype(np.float32)
+        door = np.isin(ep["hit"][:, 0], (2, 3)).astype(np.float32)
+        out["aux"][i, :n, AUX_ENEMY] = torch.from_numpy(enemy)
+        out["aux"][i, :n, AUX_DOOR] = torch.from_numpy(door)
+        out["aux"][i, :n, AUX_EXIT_VIS] = ev
+        out["aux"][i, :n, AUX_KEY_COLOURS] = torch.from_numpy(ep["key_colours"].astype(np.float32))
+        out["aux"][i, :n, AUX_DAMAGE] = torch.from_numpy(ep["damage8"].astype(np.float32))
+        vis = ev > 0.5
+        b = torch.from_numpy(ep["exit_bearing"].astype(np.int64))
+        d = torch.from_numpy(ep["exit_dist"].astype(np.int64))
+        out["bear"][i, :n] = torch.where(vis, b, torch.full_like(b, -100))
+        out["dist"][i, :n] = torch.where(vis, d, torch.full_like(d, -100))
+    gamma = 0.995
+    ret = torch.zeros(B, T)
+    running = torch.zeros(B)
+    for t in range(T - 1, -1, -1):
+        running = out["reward"][:, t] + gamma * running * (out["mask"][:, t] > 0)
+        ret[:, t] = running
+    out["returns"] = ret
+    return {k: v.to(device) for k, v in out.items()}
+
+
+def batch_loss(net: DoomNet, batch: dict) -> tuple[torch.Tensor, dict]:
+    emb = net.encode({k: batch[k] for k in
+                      ("rays_dist", "rays_hit", "ent_feat", "ent_type", "ent_mask", "vitals", "rgb", "prev")})
+    logits, value, aux, _ = net.forward_seq(emb)
+    m = batch["mask"]
+    denom = m.sum().clamp(min=1.0)
+    ce = 0.0
+    for j, part in enumerate(torch.split(logits, HEAD_SIZES, dim=-1)):
+        ce_j = F.cross_entropy(part.reshape(-1, part.shape[-1]),
+                               batch["heads"][..., j].reshape(-1), reduction="none")
+        ce = ce + (ce_j * m.reshape(-1)).sum() / denom
+
+    def bce(idx, target, pos_weight=1.0):
+        logit = aux[..., idx] if isinstance(idx, int) else aux[..., idx]
+        b = F.binary_cross_entropy_with_logits(
+            logit, target, reduction="none",
+            pos_weight=torch.tensor(pos_weight, device=target.device))
+        if b.ndim > 1:
+            b = b.mean(-1)
+        return (b * m).sum() / denom
+
+    keys = bce(AUX_KEYS, batch["aux"][..., AUX_KEYS], 4.0)
+    enemy = bce(AUX_ENEMY, batch["aux"][..., AUX_ENEMY], 2.0)
+    door = bce(AUX_DOOR, batch["aux"][..., AUX_DOOR], 4.0)
+    evis = bce(AUX_EXIT_VIS, batch["aux"][..., AUX_EXIT_VIS], 12.0)
+    kcol = bce(AUX_KEY_COLOURS, batch["aux"][..., AUX_KEY_COLOURS], 6.0)
+    bear = F.cross_entropy(aux[..., AUX_EXIT_BEARING].reshape(-1, 13),
+                           batch["bear"].reshape(-1), ignore_index=-100, reduction="none")
+    bear = (bear * m.reshape(-1)).sum() / denom
+    dist = F.cross_entropy(aux[..., AUX_EXIT_DIST].reshape(-1, 6),
+                           batch["dist"].reshape(-1), ignore_index=-100, reduction="none")
+    dist = (dist * m.reshape(-1)).sum() / denom
+    dmg = F.mse_loss(aux[..., AUX_DAMAGE], batch["aux"][..., AUX_DAMAGE], reduction="none")
+    dmg = (dmg * m).sum() / denom
+    aux_loss = keys + enemy + door + evis + kcol + bear + dist + dmg
+    v_loss = (F.mse_loss(value[..., 0], batch["returns"], reduction="none") * m).sum() / denom
+    loss = ce + 0.2 * aux_loss + 0.5 * v_loss
+    return loss, {"ce": ce.detach(), "aux": aux_loss.detach(), "value": v_loss.detach(),
+                  "exit": evis.detach(), "bear": bear.detach()}
+
+
+def evaluate_quick(net: DoomNet, device: str, n_maps: int = 4, seed: int = 10_000) -> dict:
+    from training.evaluate import run_agent_episode
+    from training.maps.gen_wad import generate_map
+    net.eval()
+    res = []
+    for i in range(n_maps):
+        spec = generate_map(seed + i, tier=2 + (i % 3), out_dir="training/data/eval_maps",
+                            no_doors=True, no_monsters=True)
+        r = run_agent_episode(net, str(spec.path), "MAP01", device=device, ticks=4200)
+        res.append(r)
+    net.train()
+    return {"exit_rate": float(np.mean([r["exit"] for r in res])),
+            "median_steps": float(np.median([r["steps"] for r in res])),
+            "proxy": float(np.mean([r["proxy"] for r in res]))}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--data", default="training/data/demos_all")
+    ap.add_argument("--out", default="training/runs/bc_a")
+    ap.add_argument("--epochs", type=int, default=4)
+    ap.add_argument("--batch", type=int, default=12)
+    ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--val-frac", type=float, default=0.08)
+    ap.add_argument("--device", default="auto")
+    ap.add_argument("--resume", default="")
+    args = ap.parse_args()
+
+    device = args.device
+    if device == "auto":
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
+    eps = load_episodes(args.data)
+    if not eps:
+        raise SystemExit(f"no episodes in {args.data}")
+    rng = np.random.default_rng(0)
+    rng.shuffle(eps)
+    n_val = max(1, int(len(eps) * args.val_frac))
+    val, train = eps[:n_val], eps[n_val:]
+    print(f"{len(train)} train / {len(val)} val episodes, device={device}")
+
+    net = DoomNet().to(device)
+    opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
+    if args.resume:
+        net.load_state_dict(torch.load(args.resume, map_location=device))
+        print("resumed", args.resume)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+
+    steps_per_epoch = math.ceil(len(train) / args.batch)
+    for epoch in range(args.epochs):
+        t0 = time.time()
+        order = rng.permutation(len(train))
+        totals = {"ce": 0.0, "aux": 0.0, "value": 0.0, "loss": 0.0, "exit": 0.0}
+        n = 0
+        for b in range(steps_per_epoch):
+            idx = order[b * args.batch:(b + 1) * args.batch]
+            batch = collate([train[i] for i in idx], device)
+            loss, parts = batch_loss(net, batch)
+            opt.zero_grad(set_to_none=True)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+            opt.step()
+            totals["loss"] += float(loss)
+            for k, v in parts.items():
+                totals[k] += float(v)
+            n += 1
+            if (b + 1) % 10 == 0:
+                print(f"  epoch {epoch} {b + 1}/{steps_per_epoch} "
+                      f"loss={totals['loss'] / n:.3f} ce={totals['ce'] / n:.3f} "
+                      f"aux={totals['aux'] / n:.3f} v={totals['value'] / n:.3f}", flush=True)
+        val_loss = None
+        if val:
+            net.eval()
+            with torch.no_grad():
+                vb = []
+                for i in range(0, len(val), args.batch):
+                    batch = collate(val[i:i + args.batch], device)
+                    l, _ = batch_loss(net, batch)
+                    vb.append(float(l))
+                val_loss = float(np.mean(vb))
+            net.train()
+        metrics = evaluate_quick(net, device, seed=10_000)
+        torch.save({"model": net.state_dict(), "config": {"hidden": net.hidden},
+                    "epoch": epoch, "val_loss": val_loss, "metrics": metrics}, out / "ckpt.pt")
+        torch.save({"model": net.state_dict(), "config": {"hidden": net.hidden}},
+                   out / f"ckpt_e{epoch}.pt")
+        print(f"epoch {epoch} done in {time.time() - t0:.0f}s train={totals['loss'] / n:.3f} "
+              f"val={val_loss if val_loss is None else round(val_loss, 3)} eval={metrics}", flush=True)
+    print("saved", out / "ckpt.pt")
+
+
+if __name__ == "__main__":
+    main()

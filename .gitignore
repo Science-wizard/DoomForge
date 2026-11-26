@@ -222,3 +222,12 @@ _vizdoom.ini
 
 # Local validator / scorer artifacts
 *.lmp
+
+# DoomForge training artifacts (datasets and checkpoints are reproducible)
+training/data/
+training/runs/
+maps/generated/
+docs/assets/frames/
+maps/freedoom/
+maps/freedoom_open/
+maps/freedoom_nav/

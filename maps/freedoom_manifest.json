@@ -1,0 +1,162 @@
+[
+ {
+  "map": "MAP01",
+  "sectors": 211,
+  "doors": 6
+ },
+ {
+  "map": "MAP02",
+  "sectors": 227,
+  "doors": 11
+ },
+ {
+  "map": "MAP03",
+  "sectors": 315,
+  "doors": 18
+ },
+ {
+  "map": "MAP04",
+  "sectors": 139,
+  "doors": 12
+ },
+ {
+  "map": "MAP05",
+  "sectors": 185,
+  "doors": 15
+ },
+ {
+  "map": "MAP06",
+  "sectors": 109,
+  "doors": 6
+ },
+ {
+  "map": "MAP07",
+  "sectors": 233,
+  "doors": 14
+ },
+ {
+  "map": "MAP08",
+  "sectors": 238,
+  "doors": 30
+ },
+ {
+  "map": "MAP09",
+  "sectors": 347,
+  "doors": 21
+ },
+ {
+  "map": "MAP10",
+  "sectors": 423,
+  "doors": 8
+ },
+ {
+  "map": "MAP11",
+  "sectors": 648,
+  "doors": 35
+ },
+ {
+  "map": "MAP12",
+  "sectors": 863,
+  "doors": 61
+ },
+ {
+  "map": "MAP13",
+  "sectors": 243,
+  "doors": 5
+ },
+ {
+  "map": "MAP14",
+  "sectors": 198,
+  "doors": 10
+ },
+ {
+  "map": "MAP15",
+  "sectors": 777,
+  "doors": 57
+ },
+ {
+  "map": "MAP16",
+  "sectors": 207,
+  "doors": 11
+ },
+ {
+  "map": "MAP17",
+  "sectors": 198,
+  "doors": 9
+ },
+ {
+  "map": "MAP18",
+  "sectors": 278,
+  "doors": 12
+ },
+ {
+  "map": "MAP19",
+  "sectors": 289,
+  "doors": 6
+ },
+ {
+  "map": "MAP20",
+  "sectors": 414,
+  "doors": 15
+ },
+ {
+  "map": "MAP21",
+  "sectors": 196,
+  "doors": 10
+ },
+ {
+  "map": "MAP22",
+  "sectors": 355,
+  "doors": 20
+ },
+ {
+  "map": "MAP23",
+  "sectors": 539,
+  "doors": 32
+ },
+ {
+  "map": "MAP24",
+  "sectors": 195,
+  "doors": 15
+ },
+ {
+  "map": "MAP25",
+  "sectors": 666,
+  "doors": 18
+ },
+ {
+  "map": "MAP26",
+  "sectors": 348,
+  "doors": 6
+ },
+ {
+  "map": "MAP27",
+  "sectors": 503,
+  "doors": 25
+ },
+ {
+  "map": "MAP28",
+  "sectors": 589,
+  "doors": 31
+ },
+ {
+  "map": "MAP29",
+  "sectors": 131,
+  "doors": 13
+ },
+ {
+  "map": "MAP30",
+  "sectors": 27,
+  "doors": 1
+ },
+ {
+  "map": "MAP31",
+  "sectors": 86,
+  "doors": 14
+ },
+ {
+  "map": "MAP32",
+  "sectors": 146,
+  "doors": 20
+ }
+]
