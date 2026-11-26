@@ -1,0 +1,68 @@
+[
+ {
+  "category": "C0_sanity",
+  "map_id": "C0_sanity_10000",
+  "mp4": "docs/assets/videos/C0_sanity_10000.mp4",
+  "gif": "docs/assets/videos/C0_sanity_10000.gif",
+  "steps": 64,
+  "exit": true,
+  "kills": 0,
+  "keys": 0,
+  "proxy": 10.9
+ },
+ {
+  "category": "C5_key_lock",
+  "map_id": "C5_key_lock_10000",
+  "mp4": "docs/assets/videos/C5_key_lock_10000.mp4",
+  "gif": "docs/assets/videos/C5_key_lock_10000.gif",
+  "steps": 268,
+  "exit": true,
+  "kills": 0,
+  "keys": 1,
+  "proxy": 18.0
+ },
+ {
+  "category": "C6_two_key",
+  "map_id": "C6_two_key_10000",
+  "mp4": "docs/assets/videos/C6_two_key_10000.mp4",
+  "gif": "docs/assets/videos/C6_two_key_10000.gif",
+  "steps": 393,
+  "exit": true,
+  "kills": 0,
+  "keys": 2,
+  "proxy": 23.5
+ },
+ {
+  "category": "C2_arena",
+  "map_id": "C2_arena_10001",
+  "mp4": "docs/assets/videos/C2_arena_10001.mp4",
+  "gif": "docs/assets/videos/C2_arena_10001.gif",
+  "steps": 218,
+  "exit": true,
+  "kills": 4,
+  "keys": 0,
+  "proxy": 11.95
+ },
+ {
+  "category": "C4_room_door",
+  "map_id": "C4_room_door_10003",
+  "mp4": "docs/assets/videos/C4_room_door_10003.mp4",
+  "gif": "docs/assets/videos/C4_room_door_10003.gif",
+  "steps": 146,
+  "exit": true,
+  "kills": 0,
+  "keys": 0,
+  "proxy": 11.4
+ },
+ {
+  "category": "C8_backtrack",
+  "map_id": "C8_backtrack_10000",
+  "mp4": "docs/assets/videos/C8_backtrack_10000.mp4",
+  "gif": "docs/assets/videos/C8_backtrack_10000.gif",
+  "steps": 400,
+  "exit": true,
+  "kills": 0,
+  "keys": 1,
+  "proxy": 17.5
+ }
+]

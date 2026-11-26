@@ -9,14 +9,36 @@
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![ViZDoom](https://img.shields.io/badge/ViZDoom-1.3.3-5c2d91?style=flat-square)](https://vizdoom.farama.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.15-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![Latency](https://img.shields.io/badge/decision-1.0%20ms%20p50-0969da?style=flat-square)](#validation)
-[![Repo size](https://img.shields.io/badge/repo-<30%20MB-6f42c1?style=flat-square)](#repository)
+[![Latency](https://img.shields.io/badge/decision-1.7%20ms%20p50-0969da?style=flat-square)](#validation)
+[![Repo size](https://img.shields.io/badge/repo-17.5%20MB-6f42c1?style=flat-square)](#repository)
 
-<img src="docs/assets/doomforge.gif" alt="DoomForge agent replay" width="420">
+<img src="docs/assets/videos/C6_two_key_10000.gif" alt="DoomForge agent fetching two keys" width="420">
 
-<sub>A trained agent in the official `doom_env` wrapper — ego-centric observations only.</sub>
+<sub>Shipped hybrid on C6: fetch the red key, open the red door, fetch the blue key,
+open the blue door, reach the exit — 393 decisions, ego-centric observations only.</sub>
 
 </div>
+
+---
+
+## Watch it play
+
+Six unedited episodes from the shipped agent on held-out validation maps. Every
+clip is the official `DoomAgent` path; the MP4 is higher quality, the GIF is the
+inline preview.
+
+| | |
+|---|---|
+| ![C0](docs/assets/videos/C0_sanity_10000.gif)<br>**C0 sanity** · 64 steps · exit · [MP4](docs/assets/videos/C0_sanity_10000.mp4) | ![C5](docs/assets/videos/C5_key_lock_10000.gif)<br>**C5 key → locked door** · 268 steps · [MP4](docs/assets/videos/C5_key_lock_10000.mp4) |
+| ![C6](docs/assets/videos/C6_two_key_10000.gif)<br>**C6 two keys, two locks** · 393 steps · [MP4](docs/assets/videos/C6_two_key_10000.mp4) | ![C2](docs/assets/videos/C2_arena_10001.gif)<br>**C2 arena combat** · 218 steps · exit · [MP4](docs/assets/videos/C2_arena_10001.mp4) |
+| ![C4](docs/assets/videos/C4_room_door_10003.gif)<br>**C4 room-wall door** · 146 steps · exit · [MP4](docs/assets/videos/C4_room_door_10003.mp4) | ![C8](docs/assets/videos/C8_backtrack_10000.gif)<br>**C8 backtrack** · 400 steps · exit · [MP4](docs/assets/videos/C8_backtrack_10000.mp4) |
+
+<sub>Prefer real video? Open the [MP4 gallery](docs/assets/videos/README.md) with inline players.</sub>
+
+<sub>Recorded with `tools/record_videos.py`; metadata and exact map IDs are in
+[`docs/assets/videos/clips.json`](docs/assets/videos/clips.json). These are
+illustrative successes, not a cherry-picked score: the full per-category table,
+including failures, is in [`docs/RESULTS.md`](docs/RESULTS.md).</sub>
 
 ---
 
@@ -40,6 +62,8 @@ minus damage and early death. The exact weights are hidden.
 ---
 
 ## What DoomForge does
+
+Module-by-module reference: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ```mermaid
 flowchart LR
@@ -118,6 +142,30 @@ Trained from privileged map geometry during training, used only to shape the enc
 | keys held | six flags from vitals |
 | enemy visible / door ahead | self-supervised from entities/rays |
 | damage next 8 | `max(0, hp[t] − hp[t+8]) / 100` |
+
+---
+
+## Methodology
+
+The full end-to-end method — data generation, teacher, BC, DAgger, PPO, suite,
+gates, probes, compute choices and limitations — is in
+[`docs/METHODOLOGY.md`](docs/METHODOLOGY.md). The short version:
+
+1. **Maps**: a procedural binary-map generator with four layout tiers, coloured
+   locks, visible exit signs, plus 32 Freedoom maps split train/val/test.
+2. **Teacher**: a training-only privileged expert (16-unit nav grid, A* with door
+   costs, key gating, door state machine, circle-strafing combat) labels every
+   demonstration and every auxiliary target.
+3. **Behaviour cloning**: 128-step recurrent windows, six action heads, exit and
+   key-colour auxiliary heads, a learned goal head and the 6-channel frontier map.
+4. **Suite-driven improvement**: PPO samples the 14-category train split with a
+   30/50/20 mastered/current/hardest mix and key-potential shaping; DAgger labels
+   student failure states (the unbalanced run is documented as a dead end).
+5. **Measurement**: fast paired gate (5 maps/category × 1 seed) with bootstrap
+   CIs; full gate (30 × 5) reserved for promotion; test/OOD every look logged.
+
+Architecture details, including the perception router and the anti-freeze reflex,
+are in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
@@ -234,6 +282,30 @@ PASSED
 Official limits: 2 GB VRAM, 8 GB RAM, 1 CPU thread, 60 s init, 10 s reset, 10 s first
 act, 5 s any act, 40 ms average compute per decision. Our margins are >40× on latency
 and >8× on RAM (estimated <1 GB).
+
+---
+
+## Documentation map
+
+| Document | What it covers |
+|---|---|
+| [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) | end-to-end method: data, teacher, BC/DAgger/PPO, suite, gates, limitations |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | network modules, Atlas-G goal head/frontier map, hybrid router, reflex, parameter table |
+| [`docs/RESULTS.md`](docs/RESULTS.md) | every checkpoint and every category, including dead ends |
+| [`docs/EVALUATION.md`](docs/EVALUATION.md) | official constraints and the diagnostic suite protocol |
+| [`docs/CONTRACT.md`](docs/CONTRACT.md) | the exact observation/action contract and interface |
+| [`docs/RULES.md`](docs/RULES.md) | competition and fair-play rules we operate under |
+| [`docs/SUBMISSION.md`](docs/SUBMISSION.md) | submission checklist, LFS, final artifact layout |
+| [`docs/PHASE3_PROPOSAL.md`](docs/PHASE3_PROPOSAL.md) | approved Atlas-G / 14-category proposal |
+| [`docs/RESEARCH.md`](docs/RESEARCH.md) | short research notes on environment findings |
+| [`research.md`](research.md) | 19.7k-word literature and architecture review |
+| [`PLAN.md`](PLAN.md) | plan of record and gates (Revision 2 + Phase 3 addendum) |
+| [`progress.md`](progress.md) | dated lab log, every measured result and dead end |
+| [`training/README.md`](training/README.md) | training entry points and data layout |
+| [`training/suite/README.md`](training/suite/README.md) | 14 categories, splits, metrics, probes, commands |
+| [`docs/brief/DoomForge_Brief.pdf`](docs/brief/DoomForge_Brief.pdf) | 2-page submission brief ([HTML source](docs/brief/brief.html)) |
+| [`docs/assets/videos/clips.json`](docs/assets/videos/clips.json) | video metadata and exact map IDs |
+| [`NOTICE.md`](NOTICE.md) · [`LICENSE`](LICENSE) | attribution and license |
 
 ---
 
