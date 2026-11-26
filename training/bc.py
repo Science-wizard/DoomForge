@@ -249,6 +249,7 @@ def main() -> None:
                     help="head: train actor only; trunk: freeze encoders+GRU")
     ap.add_argument("--anchor", default="", help="frozen checkpoint for a KL anchor")
     ap.add_argument("--anchor-weight", type=float, default=0.5)
+    ap.add_argument("--success-only", action="store_true")
     args = ap.parse_args()
 
     torch.set_num_threads(min(8, os.cpu_count() or 4))
@@ -256,6 +257,10 @@ def main() -> None:
     if device == "auto":
         device = "mps" if torch.backends.mps.is_available() else "cpu"
     raw = load_episodes(args.data)
+    if args.success_only:
+        before = len(raw)
+        raw = [e for e in raw if e.get("meta", {}).get("exit")]
+        print(f"success-only: {len(raw)}/{before} episodes")
     if args.drill_repeat > 1:
         drills = [e for e in raw if e.get("meta", {}).get("tag") == "drill"]
         raw = raw + drills * (args.drill_repeat - 1)
