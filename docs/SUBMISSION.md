@@ -61,18 +61,17 @@ It checks:
    (`OMP_NUM_THREADS=1` etc.), as at evaluation.
 5. Peak RAM (≤ 8 GB) and peak GPU memory (≤ 2 GB) are within the [per-agent limits](EVALUATION.md#hardware).
 
-## Final artifact (Phase 5)
+## Final artifact
 
-- `submission/weights/doomforge.pt`: Atlas-E (2.00 M acting parameters; the
-  checkpoint also stores the training-only privileged critic, which is never
-  evaluated). Config: `arch=ego`, `temperature=1.0`, `route_combat=false`.
-- `submission/agent.py`: sanitises observations, updates the ego map, samples
-  the six factorised heads with a generator seeded on every `reset()`.
-- `submission/mapmem.py`: `EgoMap` (corrected odometry, heading-up two-scale
-  crop) and the legacy `MapBuilder(legacy=True)` used only by old checkpoints.
+- `submission/weights/doomforge.pt`: Atlas-E (2.00 M acting parameters, 8.4 MB,
+  Git LFS). The config stores `arch=ego`, `temperature=1.0` and
+  `route_combat=false`. The checkpoint also contains the training-only
+  privileged critic, which the agent never evaluates.
+- `submission/agent.py`: sanitises observations, updates the ego map, runs
+  the network and samples the six factorised heads with a generator re-seeded
+  on every `reset()`.
+- `submission/mapmem.py`: `EgoMap` (dead reckoning and the heading-up two-scale map).
 - `submission/model.py`, `submission/model_v1.py`: network definitions.
+- `submission/requirements.txt`: empty (base image only).
 
-The Phase-4 `combat.pt` and `specialist.pt` were removed from `submission/`
-(recoverable from git history). If they are restored next to an Atlas-G
-`doomforge.pt`, the agent runs the old hybrid unchanged. Validator: PASS,
-p50 2.2 ms / p99 4.8 ms.
+Validator: PASS, init 0.4 s, p50 1.6 ms / p99 1.9 ms per decision.

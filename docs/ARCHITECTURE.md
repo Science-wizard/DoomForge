@@ -1,365 +1,122 @@
-# Architecture Reference — Revision 2
+# Architecture: Atlas-E
 
-Plan of record: [`../PLAN.md`](../PLAN.md) (24-hour cut). Lab log: [`../progress.md`](../progress.md).
+The shipped agent is one recurrent network that reads the official observation
+plus a deterministic ego-motion map. Training: [`TRAINING.md`](TRAINING.md).
+Teaching guide: [`../explanation.md`](../explanation.md).
 
-This document describes **Baseline A** (the safety submission) and the deferred
-**B+ lite** memory extension. A is implemented; B+ is a roadmap until A clears its
-held-out gates.
-
----
-
-## 1. Contract recap
-
-The scorer runs `submission/agent.py` with no engine reference:
+## 1. Contract
 
 ```python
 class DoomAgent:
     def __init__(self, observation_space, action_space, device: str): ...
     def reset(self) -> None: ...
-    def act(self, observation: dict) -> np.ndarray  # int8[9] in {0,1}
+    def act(self, observation: dict) -> np.ndarray  # int8[9] in {0, 1}
 ```
 
-| Observation | Shape | Notes |
+| Observation | Shape | Used as |
 |---|---|---|
-| `rays.distance` | 64 float32 | hit distance / 1024 |
-| `rays.hit_type` | 64 int | none/wall/door/locked door/enemy/item |
-| `visible_entities.features` | 32×5 | dist, sin, cos, relative velocity |
-| `visible_entities.entity_type` | 32 int | enemies, items, keys, barrels |
-| `visible_entities.mask` | 32 int8 | validity |
-| `vitals` | 17 | health, armour, weapon, ammo, six key flags, velocity |
-| `rgb` / `depth` | 120×160×3 / 120×160 | pixels |
+| `rays.distance`, `rays.hit_type` | 64, 64 | ray encoder; map projection |
+| `visible_entities.features/entity_type/mask` | 32×5, 32, 32 | entity encoder; item/key projection |
+| `vitals` | 17 | vitals encoder; odometry (velocity) |
+| `rgb` | 120×160×3 | pooled 4× to 30×40 for the colour encoder |
+| `depth` | 120×160 | unused (rays already give metric free space) |
 
-**Verified gaps (Revision 2):**
-
-- Exit is **not** a ray hit type or entity class. The agent must learn exits from
-  RGB; training labels come from privileged exit linedefs.
-- Key and lock **colour** is hidden until pickup. The agent learns colour from RGB.
-- `USE` fires on button-down and reverses a moving door. Never spam it.
-- Turn rate is stateful; the agent receives `turn_held` and `prev_action`.
-
----
-
-## 2. Baseline A
+## 2. Data flow per decision
 
 ```
-rays 64 ─► circular Conv1d ×3 ─────────────────────────────► 128 ─┐
-entities ≤32 ─► type embed + MHA + masked mean/max ─────────► 128 ─┤
-vitals 17 ─► MLP ───────────────────────────────────────────►  64 ─┤
-RGB 30×40×3 ─► Conv2d ×3 (stride 2) ────────────────────────► 128 ─┤
-prev action 12 ─► MLP ─────────────────────────────────────►  32 ─┤
-                                                                  ├─ concat 480
-                                                                  ▼
-                                                           GRU(384) → 384
-                                                                  │
-                        ┌─────────────────┬───────────────────────┼──────────────────┐
-                        ▼                 ▼                       ▼                  ▼
-                  action heads         value                 aux heads          (no map)
-              move/strafe/turn/…       V(s)        keys, enemy, door, exit visible,
-                                                   exit bearing 13, exit dist 6,
-                                                   key colours 6, damage-next-8
+observation
+  │ sanitise (NaN/inf → finite, types clipped)
+  ├──────────────► EgoMap.update(observation, last executed action)
+  │                  ├─ dead reckoning: heading (turn-run table), position (per-tic friction, wall clip)
+  │                  └─ project rays / items / keys / own cell into a 160×160 grid
+  │                EgoMap.ego_crop() ─► 16×32×32 heading-up map,  pose() ─► 6
+  ▼
+DoomNet(arch="ego").forward_step(...)  ─► 15 logits
+  ▼
+seeded sampling per head (temperature 1) ─► 9 buttons
 ```
 
-- **1.56 M parameters.** Measured **0.45 ms** per decision on one CPU thread
-  (fully loaded agent p50 0.6 ms in the validator). The 40 ms budget is not a risk.
-- Factorised heads: `move(3) × strafe(3) × turn(3) × attack(2) × use(2) × next(2)`.
-  No contradictory buttons; 15 logits instead of 512.
-- RGB is pooled 4× to 30×40 to keep colour while costing 3.6 KB/frame. The CNN sees
-  exit signs, blue/red/yellow doors and coloured key pickups.
-- Auxiliary heads are trained from privileged labels and are **not used for acting**;
-  they shape the shared encoder so the GRU state carries exit/lock/threat information.
-- `reset()` clears the GRU state, previous action, `turn_held` and `use_last`.
+## 3. Ego-motion map (`submission/mapmem.py`)
 
-### Auxiliary labels (training only)
-
-| Label | Source |
+| Component | Detail |
 |---|---|
-| keys held (6) | `vitals[8:14]` |
-| enemy visible | entity types 1–3 with mask |
-| door ahead | ray 0 hit type 2/3 |
-| exit visible | exit linedef in FOV ±55° and grid line-of-sight |
-| exit bearing (13 classes) | relative angle bin, class 12 = not visible |
-| exit distance (6 bins) | 256/512/768/1024/1400-unit bins |
-| key colours (6) | key thing in FOV and line-of-sight, colour from map metadata |
-| damage next 8 | `max(0, health[t] − health[t+8]) / 100` |
+| Heading | per-decision deltas replayed from the executed action: 7.031°, 12.305°, then 14.063° per decision while a turn is held in either direction (warm-up values for the first two decisions). 0.02° error after 500 decisions. |
+| Translation | Doom per tic: momentum += thrust; position += momentum; momentum ×= 0.90625. Thrust recovered from the start/end momentum (`vitals[14:16]` in each heading); four tics integrated. |
+| Wall clip | step length limited to the previous ray distance in the travel direction − 17 units (momentum is reported while pinned). ~30 units position error after 500 decisions. |
+| Grid | 160×160 cells × 64 units = 10,240 units, origin at spawn |
+| Channels | free (ray paths), wall, door, locked door (cleared when rays later pass), item, key, trail (own cells), frontier (free cells next to unknown) |
+| Readout | heading-up crops: fine 32×32 at 64 u/cell; coarse 32×32 at 256 u/cell (4×4 max-pool). Concatenated: 16×32×32. |
+| Pose | dead-reckoned x/2048, y/2048 (clipped), sin/cos heading, forward/right velocity /16 |
+| Cost | ~0.55 ms per decision (NumPy) |
 
----
+`MapBuilder(legacy=True)` keeps the older world-aligned 6-channel map for older
+checkpoint formats; the shipped agent does not use it.
 
-## 3. B+ lite (deferred until A ships)
+## 4. Network (`submission/model.py`, `DoomNet(arch="ego")`)
 
-The GRU is a short-horizon memory. Keys and locked doors require hundreds of steps.
-B+ adds **perception memory**, not planning:
+| Module | Structure | Out | Params |
+|---|---|---:|---:|
+| RayEncoder | [distance, one-hot hit (6), sin, cos] × 64 → circular Conv1d 9→32→64→64 (k5,5,3) → mean ⊕ max → Linear | 128 | 40.6k |
+| EntityEncoder | [5 features ⊕ type embedding 16] → MLP 64 → 4-head self-attention + FFN (residual + LayerNorm) → masked mean ⊕ max → Linear | 128 | 47.5k |
+| VitalsEncoder | vitals × 0.01 → MLP 64 | 64 | 5.3k |
+| RGBEncoder | 3×30×40 → Conv2d 32 (5, s2) → 64 (3, s2) → 64 (3, s2) → Linear | 128 | 221.8k |
+| PrevEncoder | previous 9 buttons, USE-last, turn-held/4 → MLP | 32 | 1.5k |
+| EgoMapEncoder | 16×32×32 → Conv 32 (3, s1) → 64 (s2) → 64 (s2) → 64 (s2) → Linear | 192 | 293.8k |
+| PoseEncoder | 6 → MLP | 32 | 1.3k |
+| GoalHead | 704 → 64 → 64 → goal vector 8 (tanh) + goal type 4 | 8 + 4 | 50.1k |
+| GoalEncoder | 8 → MLP | 32 | 1.3k |
+| Fuse | 736 → 384, GELU | 384 | 283.0k |
+| GRU | 384 → 384 | 384 | 887.0k |
+| Trunk | 384 → 384, GELU | 384 | 147.8k |
+| Actor | 384 → 15 (move 3, strafe 3, turn 3, attack 2, use 2, next 2) | 15 | 5.8k |
+| Critic | 384 → 1 | 1 | 0.4k |
+| Auxiliary | 384 → 35 (keys 6, enemy, door ahead, exit visible, exit bearing 13, exit distance 6, key colours 6, damage-next-8) | 35 | 13.5k |
+| **Acting total** | | | **2,000,735** |
+| Privileged critic (training only) | 384 ⊕ 16 privileged → 256 → 1 | 1 | 102.9k |
 
-- **Pose:** exact heading integration from the measured turn table (`turn_held` +
-  warm-up state) and translation from `vitals[14:16]`; optional translation-only scan
-  match against the wall channel (±16 units, ~81 candidates, <0.5 ms).
-- **Map:** 64 units/cell, 96×96 (6,144 units). Channels: free, wall, door, locked
-  door, visited, recency, frontier, item, enemy decay, exit likelihood, opened.
-- **Write:** project rays and entity positions at the estimated pose. Deterministic
-  perception; no search or planning.
-- **Read:** two 32×32 egocentric crops (64 and 128 units/cell), rotated to heading,
-  through a small CNN → 256.
-- **Event tokens:** ≤64 tokens for locked doors, keys, exit cues and frontier
-  clusters. 24 features; relative fields recomputed from pose every step; attention
-  query from the GRU state → 128. This is the long-horizon fix and the live-demo
-  attention overlay.
-- **Optional learned write:** 4 channels projected from the GRU state at the agent's
-  cell; keep only if an ablation wins.
+All activations are GELU. There is no batch norm or dropout. Inference is 0.69 ms per
+decision on one CPU thread; the full agent (map + network + sampling) measures
+p50 1.6 ms / p99 1.9 ms in the official validator.
 
-**Causal tests:** memory wipe after key pickup; locked-door recall rate; attention
-spike on the remembered door when the key flag flips; drift curves.
+### Heads and what they are for
 
-**Rule check:** deterministic map writing is preprocessing/encoding; the policy still
-chooses actions. No A*/BFS/Dijkstra in `submission/`. Ask the organisers for a written
-yes before submission.
+- **Action heads.** Factorised categorical distributions. They exclude contradictory
+  button pairs (216 joint actions instead of 512) and are converted back to a valid
+  `MultiBinary(9)`.
+- **Goal head.** Supervised in BC with the teacher's current objective
+  (ego-relative dx, dy, distance, bearing, type). Its prediction is re-encoded and
+  fused into the policy input. It is frozen during PPO.
+- **Auxiliary heads.** Supervised in BC with privileged labels. They shape the
+  encoder to represent exit signs, lock colours and threats, and are never read
+  when acting.
+- **Privileged critic.** PPO baseline. It is stored in the checkpoint and never
+  evaluated by the agent.
 
----
+## 5. Acting (`submission/agent.py`)
 
-## 4. Training system
+- `__init__`: `torch.set_num_threads(1)`, loads `weights/doomforge.pt` on CPU
+  (or CUDA if offered), reads the architecture from the state dict and the
+  acting config (`temperature`, `route_combat`) from the checkpoint, and runs
+  three warm-up decisions.
+- `reset()`: clears the GRU state, previous-action bookkeeping and the map, and
+  re-seeds the sampling generator (seed 12345).
+- `act()`: sanitise → map update → forward → sample six heads → 9 buttons.
+  The executed action is fed back to the map's odometry and to the previous-
+  action input. Any exception returns a valid zero action and resets.
+- No network, engine, disk writes or `training/` imports.
 
-```
-generated + Freedoom maps
-        │
-        ├─ privileged teacher (A*, doors, exits, combat)  ──► demonstrations
-        │                                                   (rays, entities,
-        │                                                    vitals, RGB, prev,
-        │                                                    actions, aux labels)
-        ▼
-  behaviour cloning  ──►  PPO fine-tune  ──►  proxy leaderboard  ──►  weights
-```
+Compatibility paths, inactive in the shipped configuration: older Atlas-G/v1
+checkpoints, an optional perception-routed combat expert (`combat.pt`), and a
+corridor-door specialist (`specialist.pt`). They activate only if those weight
+files are present and the config allows them.
 
-### Teacher
-
-`training/teacher/`: map parser (binary + UDMF), 16-unit navigation grid, A* with
-door costs, door state machine, switch/walk-over exits, circle-strafing combat.
-Used only for data; never imported by `submission/`.
-
-### Maps
-
-- `training/maps/gen_wad.py`: BSP rooms, 1-tile isolated doors, coloured locks,
-  visible exit sign wall, arena cover, four tiers. Node-less Doom binary (required
-  for things to spawn). Deterministic from `(seed, tier)`.
-- `training/maps/drills.py`: 1-tile corridors with isolated doors and key alcove.
-- `training/maps/prepare_freedoom.py`: 32 maps × raw / doors-open / doors-open+no-
-  monsters.
-
-### Splits
-
-`training/splits.py`: Freedoom MAP01–22 train, MAP23–32 held out; generated seeds
-0–9,999 train, 10,000–10,999 validation, 20,000+ OOD. The collector and evaluator read
-the same file.
-
-### Reward (PPO, proxy)
-
-Exit +10, key +3, lock +3, door +0.5, new sector +0.3, new cell +0.01 capped, kill
-+0.6, damage −0.01/HP, death `−(3(1−t/T)+1)`, wasted shot −0.003, useless USE
-−0.005, time −0.001, potential-based objective shaping. Exact scorer weights are
-hidden; every component is reported separately.
-
----
-
-## 5. Evaluation
-
-`training/evaluate.py` runs the real environment and reports: exit, keys, locks,
-doors, unique sectors (`SectorTracker`), kills, damage, survival, steps, proxy score,
-p50/p99 latency. Suites: `gen_val`, `freedoom_eval` (MAP23–32), `ood`, `all`.
-
-`training/coverage.py` maps the player position to a sector via the wrapper's
-`sector_polygons()` and counts unique sectors.
-
----
-
-## 6. Runtime and safety
-
-- Loads one fp32 checkpoint (~6 MB) from `submission/weights/` in `__init__`.
-- `torch.set_num_threads(1)`; `torch.inference_mode()`; 3 dummy forwards warm-up.
-- Argmax by default; deterministic. No dropout, no batch norm.
-- Sanitises NaN/inf; on any failure returns a valid zero action and logs once.
-- No network, no engine, no disk writes, no imports from `training/`.
-
----
-
-## 7. Module map
+## 6. Module map
 
 | Path | Role |
 |---|---|
 | `submission/agent.py` | evaluation entry point |
-| `submission/model.py` | Baseline A network (single source of truth) |
-| `submission/weights/doomforge.pt` | Git LFS checkpoint |
-| `training/obs.py` | observation flattening, RGB pooling, prev-action vector |
-| `training/collect.py` | demonstrations + privileged labels |
-| `training/bc.py` | behaviour cloning (windowed episodes) |
-| `training/ppo.py` | RL fine-tune (scaffold) |
-| `training/evaluate.py` | proxy leaderboard / replays |
-| `training/coverage.py` | sector coverage |
-| `training/splits.py` | frozen data splits |
-| `training/maps/` | generator, drills, Freedoom prep |
-| `training/teacher/` | privileged expert (training only) |
-| `validate.py` | official validator (untouched) |
-
----
-
-## 5. Atlas-G v1 (Phase 3)
-
-Atlas-G keeps Baseline A's encoders and GRU and adds a learned goal interface and
-a frontier map channel. It is trained on the diagnostic suite, not just generated
-tiers.
-
-### 5.1 What changed
-
-| Component | Baseline A | Atlas-G v1 |
-|---|---|---|
-| Map memory | 5×32×32 @ 64 u/cell | **6×32×32**: visited, wall, door, locked door, item/key, **frontier** |
-| Goal signal | none | **GoalHead(640→64) → 8-vector + 4-way type**, encoded to 32 and fused into the 672→384 projection |
-| Aux heads | exit visibility/bearing/distance, keys, door, damage | unchanged |
-| Action heads | 6 factorised heads (15 logits) | unchanged |
-| Parameters | 1.807 M | **1.867 M** |
-| Inference | p50 0.86 ms CPU | same budget (goal head adds ~0.01 ms) |
-
-The goal vector is ego-relative: `[dx/512, dy/512, dist/1024, sin(rel), cos(rel),
-type/4, mask, 0]`. Type is exit/key/frontier/other. During BC/DAgger the label is
-the privileged teacher's current objective; at inference the head predicts it
-from the observation, so the shipped agent never sees privileged state.
-
-### 5.2 What is deliberately not in v1
-
-The approved proposal also listed a 96×96 map at 64 u/cell, scan matching,
-event tokens, an 8-step goal manager and an asymmetric critic. v1 keeps the
-32×32 deterministic map and per-step goal prediction because the measured
-bottleneck was not map resolution: it was wall recovery and key-lock sequencing,
-which the suite found immediately. The larger map and manager are gated on the
-suite showing a spatial-resolution or goal-thrash failure; the probe set
-(door-angle, corruption, memory-wipe, determinism) is how that decision is made.
-
-### 5.3 Training stack (measured)
-
-| workload | MLX GPU | PyTorch CPU | PyTorch MPS |
-|---|---:|---:|---:|
-| 2 M-param MLP, 256×512 | **4.2 ms** | 11.2 ms | 11.3 ms |
-| DoomNet 16×128 fwd+bwd | — | 3.50 s | **0.22 s** |
-
-Training runs on MPS; environments, the suite runner and data collection run on
-all 10 CPU threads. MLX is not used for the policy because the recurrent graph
-loses its advantage; the measured MLP win does not transfer.
-
-### 5.4 Suite coupling
-
-- `ppo.py --suite` samples the train split with a 30/50/20 mastered/current/
-  hardest mix, plus dense training-only potential shaping toward uncollected
-  keys.
-- `dagger.py --source suite` labels student failure states (used once; the
-  unbalanced run is documented as a dead end in `progress.md`).
-- Every candidate is scored with `training/suite/run.py`; promotion uses
-  `training/suite/compare.py` (paired bootstrap + per-category floors).
-
-### 5.5 Atlas-H: perception-routed hybrid (shipped candidate)
-
-Two experts are loaded from `submission/weights/`:
-
-| file | expert | role |
-|---|---|---|
-| `doomforge.pt` | Atlas-G v1 (BC + suite DAgger/key demos) | navigation, exploration, keys, doors |
-| `combat.pt` | Phase-2 PPO-25 (v1, no goal head) | visible combat |
-| `specialist.pt` | Atlas-G architecture, BC on C3/C4 suite demos | narrow-corridor doors |
-
-The navigation and combat networks are evaluated on every observation so their
-recurrent state and the deterministic map stay current; the door specialist runs
-only on gated decisions. The **router reads only the observation and the agent's
-own map memory**:
-
-1. any `enemy_melee` / `enemy_hitscan` / `enemy_projectile` visible ⇒ combat
-   expert for at least 16 decisions;
-2. otherwise, if no locked door is known, no key is visible or held, a door is
-   known, and the median side ray at first activation is **< 0.23** (a narrow
-   corridor), latch to the door specialist for the episode;
-3. otherwise Atlas-G.
-
-No privileged state, category label, or map name is used. The 0.23 threshold is
-what keeps the specialist off the two-room validator map and C4 while still
-firing on C3.
-
-A deterministic **safety reflex** handles the freeze modes found by the suite:
-if no enemy is visible and the policy has pressed forward for 8 decisions with
-forward velocity ≈ 0, it turns for 4 decisions; if it has emitted a pure no-op
-for 8 decisions, it nudges forward + USE. The reflex is a supervisor: the
-policy's own action (not the override) is fed back as ``prev_action`` so its
-learned dynamics stay in distribution, while the environment executes the
-override. This fixed C6 (0/5 → 5/5), C3
-(0/5 → 3/5) and C8 (1/5 → 3/5) on the validation suite and is disabled in
-combat, leaving the arena expert untouched.
-
-Cost: two 1.8 M-parameter forward passes normally, a third only on gated
-decisions. The official validator measures p50 1.7–2.4 ms, p99 2.0–2.6 ms, max
-6 ms per step (single model was p50 0.8 ms, p99 1.0 ms), well inside the 40 ms
-average and 5 s worst-case budget.
-
-Why a hybrid rather than one network: the suite showed the failure modes are
-anti-correlated. PPO-25 wins arena combat (t1 6/8, C2 80%) but circles in
-corridors (C0 0%, C5 0%); Atlas-G solves C0/C3/C5/C8 but is worse in open
-combat. A single policy trained on all of it catastrophically forgot one side
-(BC v5: C5 100% but t1 0/12; PPO v2: mean return up but C5 0/5). Routing on a
-perception cue the agent already possesses is the measured best of both.
-
----
-
-## 6. Atlas-E (Phase 5, shipped)
-
-Phase 5 replaced the three-network hybrid with **one network** trained by
-behaviour cloning and then large-scale PPO. Three findings drove it.
-
-### 6.1 The map was wrong
-
-`MapBuilder`'s dead reckoning had two bugs, measured against privileged pose
-on random action sequences:
-
-| | heading error @100 / 500 steps | position error @500 steps |
-|---|---:|---:|
-| Phase 1–4 odometry | 33° / 25° | 431 units |
-| turn-run fix | 0.01° / 0.02° | 269 units |
-| + friction model + wall clip | 0.01° / 0.02° | **31 units** |
-
-1. **Turn reversal.** Doom's `turnheld` counts consecutive turning tics in
-   *either* direction, so a left→right reversal turns at the full 14.06°/step.
-   The old code reset the run on a direction change and predicted 7.03°.
-2. **Translation.** Per tic Doom adds thrust, moves by momentum, then applies
-   friction (0.90625). The new integrator recovers the constant thrust from the
-   world-frame momentum at both ends of the step and integrates four tics
-   (0.83 vs 2.25 units/step error). While the player is pinned against a wall
-   the engine keeps reporting momentum, so the step is clipped by the free
-   distance the previous rays saw in the direction of travel.
-
-The Phase 1–4 checkpoints were trained on the drifting maps, so they run with
-`MapBuilder(legacy=True)`, which reproduces the old integration exactly
-(feeding them corrected maps drops C6 from 100% to 0%).
-
-### 6.2 Egocentric two-scale map
-
-`submission/mapmem.py::EgoMap` keeps a 160×160 allocentric grid at 64 u/cell
-(10,240 units) with eight channels: free, wall, door, locked door, item, key,
-**trail** (cells the agent physically occupied), frontier. It is read out as two
-**heading-up** 32×32 crops, fine (64 u/cell, the ray range) and coarse
-(256 u/cell, max-pooled, 8,192 units), giving a 16×32×32 input. Heading-up makes
-"frontier ahead-left" the same pixels at every absolute heading. The old
-world-aligned crop made the network learn rotation from a sin/cos input.
-Doors that open are cleared from the door channels when rays pass through them.
-Cost: ~0.55 ms/step in NumPy. This is still deterministic perception (projection at the
-estimated pose); there is no search or planning.
-
-### 6.3 Network
-
-Atlas-G's encoders, goal head, GRU(384) and factorised heads are unchanged,
-except for the map encoder: a stride-1 3×3 conv keeps one-cell features (a door
-in a wall, a frontier cell) before three stride-2 convs reach 4×4 → 192. The
-fused width is 704 + 32 (goal). **2.00 M acting parameters, 0.69 ms per decision
-on one CPU thread.** A training-only asymmetric critic (`critic_priv`,
-hidden + 16 privileged features → 256 → 1) is stored in the checkpoint and never
-evaluated by the agent.
-
-### 6.4 Acting
-
-The agent samples from the six factorised heads at temperature 1 with a
-`torch.Generator` re-seeded on every `reset()`, so a map + engine seed always
-produces the same action sequence. PPO policies trained with sampling have
-near-ties that argmax resolves into freezes (90%+ no-op episodes on C7/C9 under
-argmax); sampling from the trained distribution removes them. There is no
-router, reflex or specialist: each action is drawn from the network's own
-output distribution.
+| `submission/model.py` | network definitions (`arch="ego"` shipped) |
+| `submission/mapmem.py` | `EgoMap` and the legacy `MapBuilder` |
+| `submission/model_v1.py` | oldest checkpoint format (compatibility) |
+| `submission/weights/doomforge.pt` | shipped checkpoint (Git LFS, 8.4 MB) |
+| `training/` | maps, teacher, demos, BC, PPO, suite (see `training/README.md`) |

@@ -10,4 +10,5 @@
 ```
 
 The PDF is the submitted artifact; the HTML is kept for reproducibility. Numbers in
-the results table come from `training/evaluate.py` on held-out splits.
+the results table come from the diagnostic suite (`training/suite/`) on the held-out
+test split; see `docs/RESULTS.md`.

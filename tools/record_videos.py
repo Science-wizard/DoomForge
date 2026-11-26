@@ -19,12 +19,12 @@ from submission.agent import DoomAgent
 from training.evaluate import run_agent_episode
 
 CLIPS = [
-    ("C0_sanity", 0, "C0 sanity: visible exit"),
-    ("C5_key_lock", 0, "C5 key -> locked door"),
-    ("C6_two_key", 0, "C6 two keys, two locks"),
-    ("C2_arena", None, "C2 arena combat"),
-    ("C3_corridor_door", None, "C3 corridor door"),
+    ("C7_exploration", None, "C7 multi-room exploration"),
+    ("C6_two_key", None, "C6 two keys, two locks"),
+    ("C4_room_door", None, "C4 door on a room wall"),
+    ("C5_key_lock", None, "C5 key -> locked door"),
     ("C8_backtrack", None, "C8 backtrack"),
+    ("C2_arena", None, "C2 arena combat"),
 ]
 
 FONT_PATHS = ("/System/Library/Fonts/Helvetica.ttc", "/System/Library/Fonts/Supplemental/Arial.ttf")
@@ -54,7 +54,7 @@ def main() -> None:
     ap.add_argument("--split", default="val")
     ap.add_argument("--out", default="docs/assets/videos")
     ap.add_argument("--fps", type=float, default=9.0)
-    ap.add_argument("--max-per-category", type=int, default=5)
+    ap.add_argument("--max-per-category", type=int, default=10)
     args = ap.parse_args()
 
     out = Path(args.out)

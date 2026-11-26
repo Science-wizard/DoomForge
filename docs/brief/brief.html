@@ -42,174 +42,152 @@
 
 <div class="kicker">Yugaantar DevForge · Track 1 · Can It Play DOOM?</div>
 <h1>DoomForge</h1>
-<p class="sub">A 1.87 M-parameter multimodal agent that <b>sees exits</b>, fetches keys, opens locks, and
-decides in 1.7 ms on one CPU thread — a goal-conditioned Atlas-G policy routed with frozen combat and door specialists,
-trained by privileged seeding, DAgger and PPO on a 14-category diagnostic suite.</p>
+<p class="sub">A single 2.0 M-parameter recurrent agent that <b>maps unseen levels as it moves</b>, fetches keys,
+opens locks and fights, deciding in 1.6 ms on one CPU thread. Trained by behaviour cloning from a privileged
+teacher, then parallel PPO with an asymmetric critic on a 14-category diagnostic suite.</p>
 
 <h2>Unique selling proposition</h2>
-<p>Two failure modes dominate zero-shot DOOM: the agent cannot recognise the exit, and it cannot remember a
-locked door long enough to find the key and return. The official structured observations expose neither exit
-nor key/lock colour, so DoomForge adds a <span class="accent">cheap colour pathway</span> (120×160 RGB pooled
-to 30×40) and trains <span class="accent">exit, bearing, distance and key-colour auxiliary heads</span> from
-privileged map geometry. The policy is a compact ray/entity/vitals/RGB encoder feeding a GRU with factorised
-action heads. Training is <span class="accent">expert-seeded</span>: a privileged A* teacher demonstrates
-navigation, doors and combat; behaviour cloning gives a strong prior; PPO fine-tunes on the suite curriculum.</p>
+<p>Zero-shot DOOM fails on memory: observations are ego-centric, the exit is not in the structured data, and
+key/lock colours appear only in pixels. DoomForge gives a small network an <span class="accent">exact ego-motion
+map</span>. The agent reconstructs its own pose from the actions it executed: Doom's turn acceleration, per-tic
+friction, and a wall-pin clip, about 30 units of error after 500 decisions. It projects rays, keys, doors and its
+own trail into a <span class="accent">heading-up two-scale map</span>. A colour pathway with exit and key-colour
+auxiliary heads lets it see signs and locks; a <span class="accent">learned goal head</span> tells it where it is
+going. Every button is sampled from the network itself: no router, no rules, no planner.</p>
 
 <div class="kpis">
-  <div class="kpi"><div class="lbl">Parameters / expert</div><div class="stat">1.87 M</div></div>
-  <div class="kpi"><div class="lbl">CPU decision (p50)</div><div class="stat">1.7 ms</div></div>
+  <div class="kpi"><div class="lbl">Acting parameters</div><div class="stat">2.00 M</div></div>
+  <div class="kpi"><div class="lbl">CPU decision (p50)</div><div class="stat">1.6 ms</div></div>
+  <div class="kpi"><div class="lbl">Test proxy</div><div class="stat">+8.48</div></div>
   <div class="kpi"><div class="lbl">Validator</div><div class="stat">PASS</div></div>
-  <div class="kpi"><div class="lbl">Init</div><div class="stat">0.6 s</div></div>
 </div>
 
-<h2>Architecture — Baseline A</h2>
-<div class="flow">  rays 64 ─► circular Conv1d ×3 ─────────────────────► 128 ─┐
-  entities ≤32 ─► type embed + MHA + masked pool ──────► 128 ─┤
-  vitals 17 ─► MLP ────────────────────────────────────►  64 ─┤
-  RGB 30×40×3 ─► Conv2d ×3 (stride 2) ─────────────────► 128 ─┤
-  prev action 12 ─► MLP ──────────────────────────────►  32 ─┤
-  map 6×32×32 ─► Conv2d ×3 (+frontier) ───────────────► 128 ─┤
-  goal 8 ─► MLP ───────────────────────────────────────►  32 ─┤
-  pose 6 ─► MLP ───────────────────────────────────────►  32 ─┤
-                                                              ├─ 672 → GRU(384) → 384
-                                                              │
-        ┌──────────────────────┬──────────────────────────────┼─────────────────────┐
-        ▼                      ▼                              ▼                     ▼
-  move/strafe/turn        value V(s)              exit visible/bearing/dist     keys, enemy,
-  attack/use/next                                  key colours, damage           door ahead
+<h2>Architecture: Atlas-E</h2>
+<div class="flow">  EgoMap: dead reckoning (turn-run table, per-tic friction, wall clip) + projection
+          160×160 grid × 8 channels: free · wall · door · locked · item · key · trail · frontier
+          read out heading-up: 32×32 @ 64 u/cell  ⊕  32×32 @ 256 u/cell  =  16×32×32
 
-  hybrid router: enemy visible ⇒ combat expert; narrow corridor + door ⇒ door specialist; else Atlas-G
-  reflex: 8 stuck-forward ⇒ turn 4; 8 no-ops ⇒ forward + USE (combat exempt)</div>
+  rays 64 ─────► circular Conv1d ×3 ───────────────────────────► 128 ─┐
+  entities ≤32 ─► type embedding + self-attention + mean/max ───► 128 ─┤
+  vitals 17 ───► MLP ───────────────────────────────────────────►  64 ─┤
+  RGB 30×40 ───► Conv2d ×3 ─────────────────────────────────────► 128 ─┤
+  prev action ─► MLP ───────────────────────────────────────────►  32 ─┤
+  ego map ─────► Conv2d (stride 1) + Conv2d ×3 (stride 2) ──────► 192 ─┤
+  pose 6 ──────► MLP ───────────────────────────────────────────►  32 ─┤
+                                    704 ─► goal head ─► goal 8 ─► 32 ──┤
+                                                                       ├─► GRU(384) ─► trunk
+       six factorised heads: move 3 · strafe 3 · turn 3 · attack 2 · use 2 · next 2  (216 joint actions)
+       seeded sampling per head → 9 buttons      [training only: value, 35 aux outputs, privileged critic]</div>
 
 <div class="two" style="margin-top:2.2mm">
 <div class="panel">
 <h3>Why this is not an SB3 baseline</h3>
 <ul>
-<li><b>Colour-aware:</b> pooled RGB is the only way to see exit signs and blue/red/yellow doors; the auxiliary
-heads force the encoder to represent them.</li>
-<li><b>Attention over entities:</b> permutation-invariant, variable count, masked null slot — not a flattened vector.</li>
-<li><b>Factorised actions:</b> six heads (216 joint actions) instead of 9 independent bits; no contradictory
-buttons, allowed as action masking.</li>
-<li><b>Privileged teacher + BC:</b> sample-efficient; PPO then optimises the hidden scoring function.</li>
+<li><b>Custom memory:</b> measured Doom odometry and a heading-up map with trail and frontier channels:
+deterministic perception, legal at inference.</li>
+<li><b>Structured encoders:</b> circular convolutions over rays, attention over a variable entity set, a
+colour CNN supervised to see exits and lock colours.</li>
+<li><b>Goal-conditioned:</b> a head trained on the teacher's objective is fused back into the policy.</li>
+<li><b>Own RL stack:</b> parallel recurrent PPO with an asymmetric privileged critic, geodesic shaping and an
+imitation regulariser. No RL library.</li>
 </ul>
 </div>
 <div class="panel">
-<h3>Memory and goals (Atlas-G)</h3>
+<h3>Acting at evaluation</h3>
 <ul>
-<li>Deterministic <code>MapBuilder</code>: heading from the measured turn table, translation from ego
-velocity, rays/items projected into a 64×64 allocentric grid; a 6-channel 32×32 crop adds a
-<b>frontier</b> channel to visited/wall/door/locked/item.</li>
-<li>A goal head predicts the teacher’s objective as an ego-relative 8-vector + type
-(exit/key/frontier/other); its 32-dim encoding is fused into the policy. At inference the goal is
-predicted from observations only.</li>
-<li>Heading drift 63° → 16° and position error 907 → 361 units over 250 steps with the corrected
-turn table; scan matching is measured but deferred until the suite shows a drift-limited failure.</li>
+<li>Sanitise the observation → update the map with the last executed action → one forward pass →
+sample each head (temperature 1) with a generator re-seeded every map, so replays are identical.</li>
+<li>Sampling, not argmax: the policy is trained stochastic, and argmax freezes at ties (+1.4 proxy from
+sampling, same weights).</li>
+<li>0.7 ms network + 0.55 ms map; 8.4 MB checkpoint; CPU only; no network, engine or disk access.</li>
 </ul>
 </div>
 </div>
 
-<h2>Training &amp; exploration pipeline</h2>
-<p><b>Maps.</b> ZDoom builds BSP nodes at load time, so we emit node-less Doom-binary maps: BSP rooms,
-isolated 1-tile doors, coloured locks, a visible exit-sign wall, arena cover, four difficulty tiers. Freedoom
-MAP01–22 supply real geometry; MAP23–32 are never trained on. <b>Teacher.</b> A 16-unit navigation grid, A*
-with door costs, a door state machine, switch/walk exits and circle-strafing combat produce demonstrations with
-privileged exit/key/door labels. <b>BC.</b> Six-head cross-entropy + exit/key-colour/damage/value heads on
-128-step windows. <b>PPO.</b> Clipped surrogate, GAE, recurrent state, reward = exit +10, key +3, lock +3,
-new sector +0.3, new cell +0.01, kill +0.6, damage −0.01/HP, early death penalty, potential-based objective
-shaping. <b>Selection.</b> A paired suite gate with bootstrap CIs decides promotion.</p>
+<h2>Training pipeline</h2>
+<p><b>Maps.</b> A node-less WAD generator (arenas, multi-room, key→lock, gauntlets) with visible exit signs and
+coloured locks; door/key drills that put the lock on the only path; Freedoom split by map number. <b>Teacher.</b> A
+training-only expert with full map access (16-unit nav grid, A* with key gating, door state machine,
+circle-strafing combat) records 436k demo steps plus exit/key-colour/damage/goal labels. <b>Ego maps</b> are
+regenerated offline by replaying the demos. <b>BC</b>: six-head cross-entropy + auxiliary + goal losses.
+<b>PPO</b>: 72 parallel envs, bootstrapped GAE, a critic with 16 privileged progress features. Rewards: exit,
+keys, locks, doors, sectors, newly seen floor, geodesic progress to the current objective, kills, minus damage,
+death and stagnation. A teacher-imitation term keeps door/key skills grounded. <b>Selection</b>: every snapshot is
+scored on validation; a paired bootstrap gate decides promotion; one logged test look.</p>
 
 <div class="foot">DoomForge · Track 1 · page 1/2 · github.com/Science-wizard/DoomForge</div>
 
 <div class="page-break"></div>
 <div class="kicker">DoomForge · Track 1</div>
-<h2 style="margin-top:1mm">What the agent learns, and how we measure it</h2>
+<h2 style="margin-top:1mm">Results and evidence</h2>
 
 <div class="two">
 <div>
-<h3>Exit perception</h3>
-<p>Every generated exit has a bright sign wall behind a walk-over line; Freedoom exits are switches. The
-exit-visible head is a 13-class bearing + 6-bin distance problem, trained from privileged exit linedefs with a
-12× positive weight. The GRU sees the sign, the bearing head tells it where, and the policy crosses the line.
-Ablation: RGB on/off, exit head on/off.</p>
+<h3>Held-out test split (140 episodes)</h3>
+<table>
+<tr><th>Category</th><th class="num">Reference</th><th class="num">DoomForge</th></tr>
+<tr><td>C0 sanity · C3 door · C6 two keys</td><td class="num">100%</td><td class="num"><b>100%</b></td></tr>
+<tr><td>C1 duel</td><td class="num">20%</td><td class="num"><b>90%</b></td></tr>
+<tr><td>C4 door on a room wall</td><td class="num">30%</td><td class="num"><b>100%</b></td></tr>
+<tr><td>C7 multi-room exploration</td><td class="num">0%</td><td class="num"><b>10%</b></td></tr>
+<tr><td>C8 key behind spawn</td><td class="num">30%</td><td class="num"><b>100%</b></td></tr>
+<tr><td>C5 key → lock · C2 arena</td><td class="num">100 · 60%</td><td class="num">80 · 50%</td></tr>
+<tr><td>C9–C13 coverage (exits 0%)</td><td class="num">3–7%</td><td class="num"><b>3–28%</b></td></tr>
+<tr><td><b>Tier-weighted proxy</b></td><td class="num">+6.11</td><td class="num"><b>+8.48</b></td></tr>
+</table>
+<p class="small">Paired difference <b>+2.37</b> (95% CI +1.47…+3.24). Validation, two seeds: +8.28 vs +6.11
+(CI +1.23…+3.08). Reference = our earlier three-network routed design on identical maps. Proxy weights are our
+assumption; components are reported separately in <code>docs/RESULTS.md</code>.</p>
 
-<h3>Doors and key colour</h3>
-<p>Blue/red/yellow door textures and coloured key pickups are the only source of colour identity; the
-key-colour head learns it from RGB. USE is an edge, and the reward penalises useless USE so the policy does not
-bounce doors. Door drills isolate the skill; PPO learns recovery.</p>
-
-<h3>Exploration</h3>
-<p>Spinning earns nothing. The shaping rewards new sectors (the scorer’s unit) and new 64-unit cells with a
-cap, so wall-following cannot out-earn entering a new room. Curriculum: arenas → 1–3 rooms → 4–10 rooms →
-key chains → full pool.</p>
-
-<h3>Combat</h3>
-<p>Hitscan enemies punish standing still. The teacher demonstrates circle-strafing and backpedalling; PPO
-optimises kills minus damage. Attention over up to 32 entities gives a permutation-invariant threat list.</p>
+<h3>What the design choices bought</h3>
+<ul>
+<li>Corrected odometry: 500-step drift 431 → 31 units, heading 25° → 0.02°.</li>
+<li>Heading-up ego map: BC alone solves corridor doors and two-key chains, no routing needed.</li>
+<li>Seen-floor + stagnation shaping: first multi-room exits; 3–4× coverage on the hardest categories.</li>
+<li>Seeded sampling vs argmax: +1.4 proxy, no freeze-at-tie episodes.</li>
+</ul>
 </div>
 <div>
-<h3>Diagnostic suite (held-out seeds 10 000+)</h3>
-<table>
-<tr><th>Category</th><th class="num">PPO-25</th><th class="num">Atlas-G</th><th class="num">Hybrid</th></tr>
-<tr><td>C0 sanity / C2 arena</td><td class="num">0 / 80%</td><td class="num">100 / 60%</td><td class="num">100 / 80%</td></tr>
-<tr><td>C1 duel / C4 room door</td><td class="num">10 / 0%</td><td class="num">0 / 20%</td><td class="num">20 / 20%</td></tr>
-<tr><td>C3 door / C5 key → lock</td><td class="num">0 / 0%</td><td class="num">0 / 100%</td><td class="num">100 / 100%</td></tr>
-<tr><td>C6 two-key / C8 backtrack</td><td class="num">0 / 0%</td><td class="num">0 / 20%</td><td class="num">100 / 40%</td></tr>
-<tr><td><b>Tier-weighted proxy</b></td><td class="num">+1.18</td><td class="num">+3.07</td><td class="num"><b>+6.20</b></td></tr>
-</table>
-<p class="small">70 episodes (5 maps/category), one seed; 95% CI +5.46…+6.98. Paired delta vs PPO-25:
-<b>+5.03</b> (CI +3.08…+7.25), gate PROMOTE. Test split: <b>+6.40</b> (CI +5.72…+7.08).
-Legacy bench t1: 7/12 exits, 25 kills. Full table: <code>docs/RESULTS.md</code>.</p>
+<h3>The 14-category diagnostic suite</h3>
+<p>C0 sanity · C1 duel · C2 arena · C3 corridor door · C4 room door · C5 key→lock · C6 two keys · C7 8–13-room
+exploration · C8 backtrack · C9 ambush · C10 scarce ammo · C11 gauntlet · C12 Freedoom · C13 OOD. Tiers 1–4
+weighted 1.0/1.2/1.5/2.0. Train/val/test/OOD split by seed, WAD-hash leakage check (overlap 0), test runs
+logged.</p>
 
-<h3>Failure modes and mitigations</h3>
+<h3>Known limitations</h3>
 <ul>
-<li><b>Exit still not learned:</b> visible sign walls + exit aux head + Freedoom switches; coverage fallback.</li>
-<li><b>Door-frame deadlock:</b> door drills, USE edge penalty, PPO recovery; the teacher’s door state machine
-is the known weak point and is not used at inference.</li>
-<li><b>Colour overfit:</b> randomised wall/floor/light/door/exit textures + Freedoom held-out.</li>
-<li><b>Time:</b> A ships first; B+ is promoted only if it wins on held-out proxy score.</li>
+<li>No exits yet on ambush, scarce-ammo, gauntlet, Freedoom and OOD maps: partial credit only. These need far
+more than the ~1.6M PPO steps a laptop allowed.</li>
+<li>Half of arena episodes end in death; survival is the next reward/curriculum target.</li>
+<li>10 maps per category: single categories swing; headline CIs account for it.</li>
 </ul>
 
 <h3>Reproduce</h3>
 <p class="small"><code>uv sync</code><br>
 <code>uv run python validate.py</code><br>
-<code>uv run python -m training.maps.prepare_freedoom</code><br>
-<code>uv run python -m training.collect --episodes 400 --source gen --no-doors --no-monsters</code><br>
-<code>uv run python -m training.bc --data training/data/demos_all --epochs 4</code><br>
-<code>uv run python -m training.evaluate --suite all</code></p>
+<code>uv run python -m training.suite.run --agent --split val --per-category 10 --workers 8 --out training/runs/suite/val_check</code><br>
+<code>uv run python -m training.suite.metrics --run training/runs/suite/val_check</code><br>
+Training from scratch: <code>docs/TRAINING.md</code>. Full explanation: <code>explanation.md</code>.</p>
 </div>
 </div>
 
-<h2>Compliance &amp; reproducibility</h2>
+<h2>Compliance</h2>
 <div class="two">
 <div>
 <ul>
 <li>Built from <code>Reinforce-SST/devforge-doom-template</code>; <code>env/</code>, <code>validate.py</code> and
-the <code>DoomAgent</code> contract are untouched; no Dockerfile; no CI/CD.</li>
-<li>Every decision is a forward pass of trained parameters plus a deterministic, observation-only anti-freeze
-reflex. The teacher, A*, BFS and door-state code live only under <code>training/</code> and are never imported by
-<code>submission/</code>.</li>
-<li>Weights in <code>submission/weights/</code> via Git LFS; repository ≪ 1 GB; no data shards committed.</li>
-<li>Deterministic argmax; explicit recurrent state; no network, engine or disk access at inference.</li>
-<li>Validator: init 0.4 s (limit 60 s), p50 1.6 ms / p99 2.2 ms (limit 5 s), dry-run episode reached the exit in 195 steps.</li>
+the <code>DoomAgent</code> contract are untouched.</li>
+<li>Every action is sampled from the trained network. No rule tree, planner, aimbot, router or reflex.</li>
 </ul>
 </div>
-<div class="panel">
-<h3>Measured margins</h3>
-<table>
-<tr><th>Budget</th><th class="num">Limit</th><th class="num">Ours</th></tr>
-<tr><td>Init</td><td class="num">60 s</td><td class="num">0.4 s</td></tr>
-<tr><td>Per decision</td><td class="num">40 ms avg</td><td class="num">1.6 ms</td></tr>
-<tr><td>Any act()</td><td class="num">5 s</td><td class="num">2.2 ms p99</td></tr>
-<tr><td>RAM</td><td class="num">8 GB</td><td class="num">&lt; 1 GB</td></tr>
-<tr><td>VRAM</td><td class="num">2 GB</td><td class="num">&lt; 0.1 GB (CPU path)</td></tr>
-<tr><td>Repo</td><td class="num">1 GB</td><td class="num">43.3 MB</td></tr>
-</table>
-<p class="small">Official scoring weights are hidden; the brief reports proxy components, never a claimed
-leaderboard score.</p>
+<div>
+<ul>
+<li>Teacher, A* and distance fields live in <code>training/</code>, never imported by <code>submission/</code>.</li>
+<li>Privileged state is used only for training rewards, labels and the critic. Weights via Git LFS.</li>
+</ul>
 </div>
 </div>
-
-<div class="foot">DoomForge · Track 1 · page 2/2 · contact: abhishekthodupunoori07@gmail.com</div>
+<div class="foot">DoomForge · Track 1 · page 2/2</div>
 
 </body>
 </html>

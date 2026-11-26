@@ -2,7 +2,8 @@
 
 # DoomForge
 
-**Can a 2 M-parameter network learn to play unseen DOOM levels on one CPU thread?**
+**A 2 M-parameter recurrent agent that explores unseen DOOM levels, fetches keys,
+opens locks and fights, deciding in 1.6 ms on one CPU thread.**
 
 [![Track](https://img.shields.io/badge/Yugaantar%20DevForge-Track%201-b3261e?style=flat-square)](https://github.com/Science-wizard/DoomForge)
 [![Validator](https://img.shields.io/badge/validate.py-PASS-2ea44f?style=flat-square)](#validation)
@@ -10,12 +11,12 @@
 [![ViZDoom](https://img.shields.io/badge/ViZDoom-1.3.3-5c2d91?style=flat-square)](https://vizdoom.farama.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.15-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Latency](https://img.shields.io/badge/decision-1.6%20ms%20p50-0969da?style=flat-square)](#validation)
-[![Repo size](https://img.shields.io/badge/repo-17.5%20MB-6f42c1?style=flat-square)](#repository)
 
-<img src="docs/assets/videos/C6_two_key_10000.gif" alt="DoomForge agent fetching two keys" width="420">
+<img src="docs/assets/videos/C7_exploration_10000.gif" alt="DoomForge exploring a multi-room level" width="420">
 
-<sub>Shipped hybrid on C6: fetch the red key, open the red door, fetch the blue key,
-open the blue door, reach the exit — 393 decisions, ego-centric observations only.</sub>
+<sub>Unseen multi-room validation map (8–13 rooms per map in this category): the agent opens doors room by room, maps the
+level as it goes and reaches the hidden exit after 915 decisions. Ego-centric
+observations only.</sub>
 
 </div>
 
@@ -23,441 +24,203 @@ open the blue door, reach the exit — 393 decisions, ego-centric observations o
 
 ## Watch it play
 
-Six unedited episodes from the shipped agent on held-out validation maps. Every
-clip is the official `DoomAgent` path; the MP4 is higher quality, the GIF is the
-inline preview.
+Unedited episodes through the official `DoomAgent` on held-out validation maps.
 
 | | |
 |---|---|
-| ![C0](docs/assets/videos/C0_sanity_10000.gif)<br>**C0 sanity** · 64 steps · exit · [MP4](docs/assets/videos/C0_sanity_10000.mp4) | ![C5](docs/assets/videos/C5_key_lock_10000.gif)<br>**C5 key → locked door** · 268 steps · [MP4](docs/assets/videos/C5_key_lock_10000.mp4) |
-| ![C6](docs/assets/videos/C6_two_key_10000.gif)<br>**C6 two keys, two locks** · 393 steps · [MP4](docs/assets/videos/C6_two_key_10000.mp4) | ![C2](docs/assets/videos/C2_arena_10001.gif)<br>**C2 arena combat** · 218 steps · exit · [MP4](docs/assets/videos/C2_arena_10001.mp4) |
-| ![C3](docs/assets/videos/C3_corridor_door_10000.gif)<br>**C3 corridor door** · 73 steps · exit · [MP4](docs/assets/videos/C3_corridor_door_10000.mp4) | ![C8](docs/assets/videos/C8_backtrack_10000.gif)<br>**C8 backtrack** · 400 steps · exit · [MP4](docs/assets/videos/C8_backtrack_10000.mp4) |
+| ![C6](docs/assets/videos/C6_two_key_10001.gif)<br>**Two keys, two locks** · 215 decisions · exit · [MP4](docs/assets/videos/C6_two_key_10001.mp4) | ![C4](docs/assets/videos/C4_room_door_10000.gif)<br>**Door on a room wall** · 201 decisions · exit · [MP4](docs/assets/videos/C4_room_door_10000.mp4) |
+| ![C5](docs/assets/videos/C5_key_lock_10000.gif)<br>**Key → locked door** · 338 decisions · exit · [MP4](docs/assets/videos/C5_key_lock_10000.mp4) | ![C8](docs/assets/videos/C8_backtrack_10000.gif)<br>**Key behind the spawn** · 144 decisions · exit · [MP4](docs/assets/videos/C8_backtrack_10000.mp4) |
+| ![C2](docs/assets/videos/C2_arena_10001.gif)<br>**Arena combat** · 125 decisions · 3 kills · exit · [MP4](docs/assets/videos/C2_arena_10001.mp4) | ![C7](docs/assets/videos/C7_exploration_10000.gif)<br>**Multi-room exploration** · 915 decisions · exit · [MP4](docs/assets/videos/C7_exploration_10000.mp4) |
 
-<sub>Prefer real video? Open the [MP4 gallery](docs/assets/videos/README.md) with inline players.</sub>
-
-<sub>Recorded with `tools/record_videos.py`; metadata and exact map IDs are in
-[`docs/assets/videos/clips.json`](docs/assets/videos/clips.json). These are
-illustrative successes, not a cherry-picked score: the full per-category table,
-including failures, is in [`docs/RESULTS.md`](docs/RESULTS.md).</sub>
+<sub>These are illustrative successes; the full per-category table, failures
+included, is in [`docs/RESULTS.md`](docs/RESULTS.md).</sub>
 
 ---
 
 ## The challenge
 
-Track 1 asks for an agent that plays **unseen** DOOM maps zero-shot through the official
-wrapper: 64 ego-centric raycasts, up to 32 visible entities, 17 vitals values, a 120×160
-RGB frame, and a 9-bit action every 4 game tics. The sandbox gives **one CPU thread**,
-2 GB VRAM, 8 GB RAM and **40 ms per decision**.
+Track 1 scores an agent on **unseen** DOOM maps through the official wrapper:
+64 ego-centric raycasts, up to 32 visible entities, 17 vitals, a 120×160 RGB
+frame and a 9-button action every 4 game tics. **One CPU thread, 40 ms per
+decision.** Two things make it hard:
 
-Two things make this harder than a standard RL benchmark:
+1. **No position, no exit marker.** Observations are ego-centric and the exit is
+   not a ray type or entity, so the agent needs its own memory of where it has
+   been and must recognise exits in pixels.
+2. **Key and lock colours are hidden** (every key is `key`, every lock
+   `locked door`) except in the image.
 
-1. **The exit is invisible to the structured observations.** There is no exit hit type
-   and no exit entity. It must be learned from pixels.
-2. **Key and lock colour is hidden until pickup.** Every key is `key`; every lock is
-   `locked_door`. Colour must come from pixels, or the agent must remember and retry.
-
-The scoring is non-binary and tier-weighted: exit ≫ keys/doors > unique sectors > kills,
-minus damage and early death. The exact weights are hidden.
+Scoring is non-binary and tier-weighted: exit ≫ keys/doors > unique areas > kills,
+minus damage and early death.
 
 ---
 
-## What DoomForge does
-
-> **Phase 5 (current): Atlas-E, one network.** The shipped agent is a single
-> 2.0 M-parameter policy with a corrected ego-motion map, read as two
-> heading-up crops, trained by BC and then parallel PPO with an asymmetric
-> critic. It replaces the Phase-3/4 hybrid (three networks, a router, a reflex
-> and a compass) and beats it on validation by **+1.26** proxy (95% CI
-> +0.62…+1.93) with no category regression. Details:
-> [`docs/ARCHITECTURE.md` §6](docs/ARCHITECTURE.md#6-atlas-e-phase-5-shipped),
-> results: [`docs/RESULTS.md` Phase 5](docs/RESULTS.md#phase-5--atlas-e-one-network-fixed-odometry-scaled-ppo).
-> The diagram below is the Phase-3/4 design; Atlas-E keeps the same encoders,
-> GRU and heads, swaps the map for the 16×32×32 ego map, and drops the router
-> and reflex.
-
-Module-by-module reference: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+## How DoomForge works
 
 ```mermaid
 flowchart LR
-    subgraph OBS["Official observation (ego-centric)"]
-        R["64 rays<br/>distance + 6 hit types"]
-        E["≤32 entities<br/>relative pose + type"]
-        V["17 vitals<br/>health/ammo/keys/velocity"]
-        G["120×160 RGB"]
-        P["previous action<br/>+ turn-held"]
+    subgraph OBS["Observation"]
+        R["64 rays"]
+        E["≤32 entities"]
+        V["17 vitals"]
+        G["RGB 120×160"]
     end
-
-    subgraph ENC["Encoders"]
-        RC["circular Conv1d<br/>128"]
-        EC["type embedding +<br/>multi-head attention<br/>128"]
-        VC["MLP<br/>64"]
-        GC["4× pool → 30×40<br/>Conv2d ×3<br/>128"]
-        PC["MLP<br/>32"]
-        MC["map crop 6×32×32<br/>+ frontier<br/>Conv2d ×3<br/>128"]
-        OC["pose 6 → MLP<br/>32"]
+    subgraph MEM["EgoMap (deterministic perception)"]
+        O["dead reckoning<br/>turn-run table + per-tic friction<br/>+ wall clip"]
+        M["160×160 grid, 8 channels<br/>free·wall·door·lock·item·key·trail·frontier"]
+        C["heading-up crops<br/>64 u/cell + 256 u/cell<br/>16×32×32"]
     end
-
-    subgraph MEM["Deterministic memory"]
-        MB["MapBuilder<br/>heading + velocity<br/>rays/items → 64×64 grid"]
+    subgraph NET["Atlas-E network (2.0 M)"]
+        ENC["encoders<br/>rays · entities · vitals · RGB 30×40<br/>prev action · map · pose"]
+        GH["goal head<br/>(learned objective)"]
+        GRU["GRU 384"]
+        H["6 factorised heads<br/>move·strafe·turn·attack·use·next"]
     end
-
-    R --> RC
-    E --> EC
-    V --> VC
-    G --> GC
-    P --> PC
-    MB --> MC
-    MB --> OC
-    RC --> F["concat 672<br/>(+ goal 32)"]
-    EC --> F
-    VC --> F
-    GC --> F
-    PC --> F
-    MC --> F
-    OC --> F
-    F --> GRU["GRU 384"]
-    GRU --> A["6 action heads<br/>move/strafe/turn/<br/>attack/use/next"]
-    A --> RT["router: enemy visible?<br/>combat expert : Atlas-G"]
-    A --> RF["safety reflex<br/>wall/idle freeze"]
-    GRU --> CR["value V(s)"]
-    GRU --> AU["aux heads<br/>exit visible/bearing/distance<br/>key colours, keys, enemy, door, damage"]
+    R --> O --> M --> C --> ENC
+    R --> ENC
+    E --> ENC
+    V --> O
+    V --> ENC
+    G --> ENC
+    ENC --> GH --> GRU
+    ENC --> GRU --> H --> S["seeded sampling<br/>→ 9 buttons"]
 ```
 
-- **No pixels at full resolution.** RGB is pooled 4× to 30×40; that is enough for a bright
-  exit sign or a blue/red/yellow door, and costs 3.6 KB/frame.
-- **Attention over entities**, not a flattened vector: permutation-invariant and works
-  with zero to 32 entities.
-- **Factorised actions**: 3×3×3×2×2×2 = 216 meaningful joint actions instead of 512
-  mostly-nonsensical bit combinations. Still a valid `MultiBinary(9)`.
-- **Deterministic memory**: heading from the measured turn table, translation from ego
-  velocity, rays and item sightings projected into a 64×64 allocentric grid. This is
-  perception, not planning — no A*, BFS, or rule tree in the submitted agent.
-- **Learned goal interface (Atlas-G)**: a 6th frontier map channel and a goal head
-  predict the teacher's current objective as an ego-relative 8-vector + type; the
-  goal vector is fused back into the policy. At inference the goal is predicted from
-  observations only.
-- **Perception-routed hybrid**: the shipped agent runs Atlas-G for navigation, keys
-  and doors, and the frozen Phase-2 arena expert when an enemy is visible. Both nets
-  see every observation; a 16-decision hysteresis stops flapping. A small
-  observation-only reflex escapes wall/idle freezes. No privileged state.
+- **EgoMap.** The agent reconstructs its own pose from the actions it executed and
+  its velocity: Doom's turn acceleration, per-tic friction, and a clip when it
+  pushes into a wall. Error is ~30 units after 500 decisions. Rays, items, keys and its own
+  trail are projected into a grid, read out as two heading-up crops. This is
+  perception, not planning.
+- **Atlas-E network.** Circular 1-D conv over rays, self-attention over entities,
+  a colour CNN for exit signs and lock colours, a map CNN, a learned goal head fused
+  back into the policy, a GRU(384) and six factorised action heads (216 joint
+  actions, no contradictory buttons).
+- **Acting.** Each head is sampled from the network's distribution with a
+  generator re-seeded per map, so runs are reproducible. No router, reflex or
+  hand-written rule.
 
-### Auxiliary heads (the “see what the observations hide” trick)
+Full detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-Trained from privileged map geometry during training, used only to shape the encoder:
-
-| Head | Target |
-|---|---|
-| exit visible | exit linedef in FOV ±55° with grid line-of-sight |
-| exit bearing | 13 classes: 12 angle bins + not visible |
-| exit distance | 6 bins: 256/512/768/1024/1400 units + not visible |
-| key colours | 6-way multi-label (blue/yellow/red card and skull) |
-| keys held | six flags from vitals |
-| enemy visible / door ahead | self-supervised from entities/rays |
-| damage next 8 | `max(0, hp[t] − hp[t+8]) / 100` |
-
----
-
-## Methodology
-
-The full end-to-end method — data generation, teacher, BC, DAgger, PPO, suite,
-gates, probes, compute choices and limitations — is in
-[`docs/METHODOLOGY.md`](docs/METHODOLOGY.md). The short version:
-
-1. **Maps**: a procedural binary-map generator with four layout tiers, coloured
-   locks, visible exit signs, plus 32 Freedoom maps split train/val/test.
-2. **Teacher**: a training-only privileged expert (16-unit nav grid, A* with door
-   costs, key gating, door state machine, circle-strafing combat) labels every
-   demonstration and every auxiliary target.
-3. **Behaviour cloning**: 128-step recurrent windows, six action heads, exit and
-   key-colour auxiliary heads, a learned goal head and the 6-channel frontier map.
-4. **Suite-driven improvement**: PPO samples the 14-category train split with a
-   30/50/20 mastered/current/hardest mix and key-potential shaping; DAgger labels
-   student failure states (the unbalanced run is documented as a dead end).
-5. **Measurement**: fast paired gate (5 maps/category × 1 seed) with bootstrap
-   CIs; full gate (30 × 5) reserved for promotion; test/OOD every look logged.
-
-Architecture details, including the perception router and the anti-freeze reflex,
-are in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
----
-
-## Training pipeline
+## How it was trained
 
 ```mermaid
 flowchart LR
-    subgraph MAPS["Map supply"]
-        GEN["Procedural binary maps<br/>4 tiers, coloured locks,<br/>visible exit signs"]
-        FD["Freedoom 2<br/>MAP01–22 train<br/>MAP23–32 held out"]
-        DR["Door/key drills<br/>1-tile corridors"]
-    end
-
-    subgraph TEACH["Privileged teacher (training only)"]
-        NAV["16-unit NavGrid<br/>A* + door state machine"]
-        LAB["Exit/key/door labels"]
-    end
-
-    subgraph LEARN["Learning"]
-        BC["Behaviour cloning<br/>6 action heads + aux + value"]
-        PPO["PPO fine-tune<br/>exit/keys/locks/sectors/combat"]
-    end
-
-    GEN --> TEACH
-    FD --> TEACH
-    DR --> TEACH
-    TEACH --> BC
-    BC --> PPO
-    PPO --> W["submission/weights/doomforge.pt"]
+    MAPS["procedural maps + drills<br/>+ Freedoom"] --> SUITE["14-category suite<br/>train/val/test/OOD"]
+    MAPS --> TEACH["privileged teacher<br/>A* · door state machine · combat"]
+    TEACH --> DEMOS["436k demo steps<br/>+ aux & goal labels"]
+    DEMOS --> EGO["ego maps replayed<br/>offline"] --> BC["behaviour cloning"]
+    BC --> PPO["parallel PPO<br/>asymmetric critic · geodesic shaping<br/>seen-floor & stagnation terms<br/>imitation + KL regularisers"]
+    SUITE --> PPO
+    PPO --> GATE["auto-eval → paired gate<br/>→ one logged test look"] --> W["weights/doomforge.pt"]
 ```
 
-The teacher reads `privileged_state()` (position, keys, sector heights) and static WAD
-geometry. It never runs at evaluation, and `submission/` never imports it. Training-time
-scaffolding is explicitly allowed by the rules.
+1. **Maps.** A procedural WAD generator (4 tiers: arenas, multi-room, key→lock,
+   gauntlets), purpose-built door/key drills, and Freedoom, split into
+   train/val/test by seed with a WAD-hash leakage check.
+2. **Teacher.** A training-only expert with full map access (nav grid, A*, door
+   state machine, circle-strafing combat) produces demonstrations and labels.
+3. **Behaviour cloning.** 436k steps, six-head cross-entropy plus auxiliary
+   (exit visibility/bearing/distance, key colours, damage) and goal losses.
+4. **PPO.** 72 parallel environments, bootstrapped GAE, a critic that sees
+   privileged progress features, rewards for exits, keys, doors, coverage and
+   newly seen floor, penalties for damage, death and standing still, plus an
+   imitation term that keeps door and key skills grounded.
+5. **Selection.** Every snapshot is scored on validation; promotion needs a
+   paired bootstrap CI above zero with no significant category regression;
+   the winner gets one logged look at the test split.
 
-**Reward used by PPO (proxy):** exit +10, key +3, locked door +3, door +0.5, new sector
-+0.3, new cell +0.01 (capped), kill +0.6, damage −0.01/HP, early death penalty,
-potential-based objective shaping. Every component is logged separately; the official
-weights are hidden.
+Full pipeline and commands: [`docs/TRAINING.md`](docs/TRAINING.md).
 
 ---
 
 ## Results
 
-### Phase 5: Atlas-E (shipped)
+Held-out **test split** (140 episodes; tier-weighted proxy; the official
+weights are hidden, so these are not leaderboard claims):
 
-Full validation split, 136 episodes (10 maps × 14 categories):
-
-| Category | Phase-4 hybrid | **Atlas-E** |
+| Category | Reference design | **DoomForge** |
 |---|---:|---:|
-| C0 sanity | 100% | 100% |
-| C1 duel | 30% | **90%** |
-| C2 arena | 70% | **80%** |
-| C3 corridor door | 100% | 100% |
-| C4 room door | 40% | **60%** |
-| C5 key → lock | 100% | 100% |
-| C6 two keys | 100% | 100% |
-| C8 backtrack | 40% | **100%** |
-| C7, C9–C13 | 0% | 0% |
-| **Tier-weighted proxy** | +6.19 | **+7.45** (CI +6.96…+7.97) |
-| Held-out **test** (140 eps) | +6.11 | **+7.02** (paired +0.91, CI +0.04…+1.76) |
+| C0 sanity · C3 corridor door · C6 two keys | 100% | **100%** |
+| C1 duel | 20% | **90%** |
+| C4 door on a room wall | 30% | **100%** |
+| C7 multi-room exploration | 0% | **10%** |
+| C8 key behind spawn | 30% | **100%** |
+| C5 key → lock | 100% | 80% |
+| C2 arena | 60% | 50% |
+| C9–C13 (ambush, scarce ammo, gauntlet, Freedoom, OOD) | 0% | 0% exits, 3–4× coverage |
+| **Tier-weighted proxy** | +6.11 | **+8.48** (paired +2.37, CI +1.47…+3.24) |
 
-What changed: dead-reckoning bugs fixed (500-step drift 431 → 31 units,
-heading 25° → 0.02°), heading-up two-scale map, a rewritten PPO (bootstrapped
-GAE, asymmetric critic, 54 parallel envs, 1,966 train maps), and seeded
-sampling instead of argmax. Exploration-heavy categories remain the open
-problem.
-
-### Phase 3/4 history
-
-> Proxy numbers from `training/suite` (70 episodes, held-out seeds 10 000+) and
-> `training/bench.py` (seeds 30 000+, Freedoom MAP23–32). The official scorer is
-> hidden; these are not claimed as leaderboard scores.
-
-### Phase 3 diagnostic suite
-
-| Category | PPO-25 | Atlas-G | **Hybrid + reflex** |
-|---|---:|---:|---:|
-| C0 sanity | 0% | 100% | **100%** |
-| C1 duel | 10% | 0% | **20%** |
-| C2 arena | 80% | 60% | 80% |
-| C3 corridor door | 0% | 0% | **100%** |
-| C4 room door | 0% | 20% | 0% (test 60%) |
-| C5 key → locked door | 0% | 100% | **100%** |
-| C6 two keys, two locks | 0% | 0% | **100%** |
-| C8 backtrack | 0% | 20% | **40%** |
-| C7/C9–C13 | 0% | 0% | 0% |
-| **Tier-weighted proxy** | **+1.18** | **+3.07** | **+6.20** |
-| 95% CI | +0.76…+1.66 | +2.39…+3.75 | **+5.46…+6.98** |
-
-Paired delta vs PPO-25: **+5.03** (95% CI +3.08…+7.25), gate **PROMOTE**. The
-same checkpoint scores **+6.40** (CI +5.72…+7.08) on the untouched test split
-(paired delta +5.51, CI +3.59…+7.69).
-The hybrid runs Atlas-G for navigation/keys/doors and the frozen Phase-2 PPO-25
-whenever an enemy is visible; an observation-only reflex escapes wall/idle
-freezes. Full tables and dead ends: [`docs/RESULTS.md`](docs/RESULTS.md).
-
-### Phase 2 official-style bench (shipped fallback comparison)
-
-| Split | Exit | Keys | Doors | Unique sectors | Proxy |
-|---|---:|---:|---:|---:|---:|
-| Generated tier 1 (combat) | **6/8** | 0 | 0 | 100% | **+8.20** |
-| Generated tier 2 (exploration) | 0/8 | 0 | 1 | 6.1% | **+0.48** |
-| Generated tier 3 (key → lock) | 0/8 | 0 | 1 | 4.2% | −0.03 |
-| Generated tier 4 (gauntlet) | 0/8 | 0 | 5 | 2.0% | −0.32 |
-| Door drills | 0/8 | 0 | 0 | 47.5% | +0.60 |
-| Freedoom MAP23–32 (unseen) | 0/10 | 0 | — | 1.6% | +0.36 |
-
-**Eight maps per generated tier**, fixed bench seeds `30000+` (never used for training),
-one engine seed, Freedoom MAP23–32 held out. This is the honest number; the earlier
-“2/2” was a two-map eval and is superseded. A separate drill-only branch reaches
-**6/8 door drills** but trades away arena exits (see `progress.md`).
-
-The Phase-2 fallback is **PPO-25** (25.6k steps from the arena specialist): tier-1
-**6/8** exits with 19 kills. In Phase 3 the shippable checkpoint is the **hybrid**
-(Atlas-G + PPO-25 + reflex): suite **+5.80** vs PPO-25's +1.18, with key
-categories 0% → 100% and no lost arena exits. The single Atlas-G checkpoint reaches
-suite +3.07, so it ships only as the navigation expert inside the router.
-
-The full lab log is in [`progress.md`](progress.md), the benchmark method and every
-per-checkpoint row is in [`docs/RESULTS.md`](docs/RESULTS.md), and the 24-hour plan and gates
-are in [`PLAN.md`](PLAN.md).
-
----
+Validation (two engine seeds): **+8.28** vs +6.11 (paired +2.17, CI
++1.23…+3.08). Full tables, ablations and limitations:
+[`docs/RESULTS.md`](docs/RESULTS.md).
 
 ## Validation
 
 ```text
-✓ Repository size (tracked files): 43.3 MB of 1.0 GB
+✓ Repository size (tracked files) within 1 GB
 ✓ requirements.txt: no extra packages
 ✓ DoomAgent interface: __init__, reset, act
 ✓ Initialization: 0.4 s (limit 60 s)
-✓ Episode on 'two_rooms.wad:MAP01': 201 steps, exit reached
-✓ Step latency: p50 1.6 ms, p99 2.0 ms, max 3 ms (limit 5 s/act)
-! CPU limit: not pinnable on macOS (Linux-only check)
-! Peak RAM: not measurable on macOS (needs /proc)
+✓ Episode on 'two_rooms.wad:MAP01' runs to completion (301 decisions; this seeded episode ends in death)
+✓ Step latency: p50 1.6 ms, p99 1.9 ms, max 3 ms (limit 5 s/act, 40 ms average)
 PASSED
 ```
 
-Official limits: 2 GB VRAM, 8 GB RAM, 1 CPU thread, 60 s init, 10 s reset, 10 s first
-act, 5 s any act, 40 ms average compute per decision. Our margins are >40× on latency
-and >8× on RAM (estimated <1 GB).
+Limits: 2 GB VRAM, 8 GB RAM, 1 CPU thread, 60 s init, 40 ms average per
+decision. DoomForge runs on CPU with an 8.4 MB checkpoint.
 
 ---
 
-## Documentation map
+## Documentation
 
-| Document | What it covers |
+| Document | Contents |
 |---|---|
-| [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) | end-to-end method: data, teacher, BC/DAgger/PPO, suite, gates, limitations |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | network modules, Atlas-G goal head/frontier map, hybrid router, reflex, parameter table |
-| [`docs/RESULTS.md`](docs/RESULTS.md) | every checkpoint and every category, including dead ends |
-| [`docs/EVALUATION.md`](docs/EVALUATION.md) | official constraints and the diagnostic suite protocol |
-| [`docs/CONTRACT.md`](docs/CONTRACT.md) | the exact observation/action contract and interface |
-| [`docs/RULES.md`](docs/RULES.md) | competition and fair-play rules we operate under |
-| [`docs/SUBMISSION.md`](docs/SUBMISSION.md) | submission checklist, LFS, final artifact layout |
-| [`docs/PHASE3_PROPOSAL.md`](docs/PHASE3_PROPOSAL.md) | approved Atlas-G / 14-category proposal |
-| [`docs/RESEARCH.md`](docs/RESEARCH.md) | short research notes on environment findings |
-| [`research.md`](research.md) | 19.7k-word literature and architecture review |
-| [`PLAN.md`](PLAN.md) | plan of record and gates (Revision 2 + Phase 3 addendum) |
-| [`progress.md`](progress.md) | dated lab log, every measured result and dead end |
-| [`training/README.md`](training/README.md) | training entry points and data layout |
-| [`training/suite/README.md`](training/suite/README.md) | 14 categories, splits, metrics, probes, commands |
-| [`docs/brief/DoomForge_Brief.pdf`](docs/brief/DoomForge_Brief.pdf) | 2-page submission brief ([HTML source](docs/brief/brief.html)) |
-| [`docs/assets/videos/clips.json`](docs/assets/videos/clips.json) | video metadata and exact map IDs |
-| [`NOTICE.md`](NOTICE.md) · [`LICENSE`](LICENSE) | attribution and license |
-
----
+| [`explanation.md`](explanation.md) | **start here**: the whole system explained, with likely judge questions |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | map, network, heads, acting, parameter table |
+| [`docs/TRAINING.md`](docs/TRAINING.md) | maps, teacher, demos, BC, PPO, rewards, exact stage settings, commands |
+| [`docs/RESULTS.md`](docs/RESULTS.md) | test/validation tables, design-choice effects, limitations |
+| [`training/suite/README.md`](training/suite/README.md) | the 14-category diagnostic suite |
+| [`training/README.md`](training/README.md) | training code layout |
+| [`docs/CONTRACT.md`](docs/CONTRACT.md) · [`docs/RULES.md`](docs/RULES.md) · [`docs/EVALUATION.md`](docs/EVALUATION.md) | official contract, rules and scoring |
+| [`docs/SUBMISSION.md`](docs/SUBMISSION.md) | submission checklist and final artifact |
+| [`docs/brief/DoomForge_Brief.pdf`](docs/brief/DoomForge_Brief.pdf) | 2-page brief |
+| [`NOTICE.md`](NOTICE.md) · [`LICENSE`](LICENSE) | attribution and licence |
 
 ## Reproduce
 
 ```bash
-# 1. environment (Python 3.13 + uv)
-uv sync
-
-# 2. official validator
-uv run python validate.py
-
-# 3. real maps (32 Freedoom maps × 3 variants)
-uv run python -m training.maps.prepare_freedoom
-
-# 4. demonstrations (navigation, arenas, drills, keys, backtrack)
-uv run python -m training.collect --episodes 250 --source gen --no-doors --no-monsters
-uv run python -m training.collect --episodes 150 --source gen --tier 1
-uv run python -m training.collect --episodes 150 --source drill --drill-doors 2 --drill-key
-uv run python -m training.collect --episodes 150 --source keychain
-uv run python -m training.collect --episodes 150 --source backtrack
-
-# 5. behaviour cloning (Atlas-G)
-uv run python -m training.bc --data training/data/demos_v2_nav,... --epochs 4
-
-# 6. diagnostic suite (train once, then fast val gate)
-uv run python -m training.suite.generate --split train --n 20
-uv run python -m training.suite.generate --split val --n 10
-uv run python -m training.suite.run --agent --split val --out training/runs/suite/val_fast --fast
-uv run python -m training.suite.compare --baseline <baseline_run> --candidate <candidate_run>
-
-# 7. PPO fine-tune (suite curriculum)
-uv run python -m training.ppo --init training/runs/bc_v5/ckpt.pt --suite --updates 80
-
-# Phase 5 (Atlas-E): ego maps for the demos, BC, parallel PPO
-uv run python -m training.suite.generate --split train --n 150
-uv run python -m training.egomaps --data training/data/demos_v2_nav,training/data/demos_v3_key,...
-uv run python -m training.bc --arch ego --out training/runs/bc_ego1 --epochs 5 --batch 16 \
-    --drill-repeat 2 --repeat keychain=2,backtrack=2,C4=2 --data <13 demo dirs>
-uv run python -m training.ppo2 --init training/runs/bc_ego1/ckpt.pt --out training/runs/ppo_ego1 \
-    --workers 9 --envs-per-worker 6 --minibatch-windows 72
-uv run python -m training.suite.run --agent --primary training/runs/ppo_ego1/ckpt_u0050.pt \
-    --combat none --split val --per-category 10 --workers 8 --out training/runs/suite/valfull_cand
+uv sync                                    # Python 3.13 environment
+uv run python validate.py                  # official validator
+uv run python -m training.suite.run --agent --split val --per-category 10 \
+    --workers 8 --out training/runs/suite/val_check       # benchmark the shipped agent
+uv run python -m training.suite.metrics --run training/runs/suite/val_check
 ```
 
-The agent is `submission/agent.py`; the weights are `submission/weights/doomforge.pt`
-(Atlas-E, Git LFS). The agent still loads Atlas-G/v1 checkpoints and the old hybrid
-when `combat.pt`/`specialist.pt` are present. The scorer mounts
-the repo read-only and gives the agent only the observation dictionary.
+Training from scratch (maps → demos → BC → PPO) is in
+[`docs/TRAINING.md`](docs/TRAINING.md).
 
----
-
-## Repository map
+## Repository
 
 ```
-submission/
-  agent.py          DoomAgent: load, reset, act (sanitised, seeded sampling, CPU-safe)
-  model.py          Atlas-G / Atlas-E network
-  mapmem.py         ego-motion map: legacy MapBuilder + EgoMap (perception only)
-  weights/          Git LFS: Atlas-E
-training/
-  maps/             procedural generator, drills, Freedoom preparation
-  teacher/          privileged A*/frontier expert (TRAINING ONLY)
-  collect.py        demonstrations + exit/key/door synthetic labels
-  dagger.py         student-state relabelling
-  bc.py             behaviour cloning
-  ppo.py            recurrent PPO (Phase 2-4, kept for reference)
-  ppo2.py           parallel PPO, asymmetric critic, geodesic shaping (Phase 5)
-  egomaps.py        ego-map regeneration for demo shards, bit packing
-  evaluate.py       proxy leaderboard, sector coverage, replays
-  coverage.py       sector lookup via sector_polygons()
-  splits.py         frozen train/val/OOD/Freedoom splits
-docs/
-  ARCHITECTURE.md   module reference and data flow
-  RESEARCH.md       environment findings, algorithm choices, references
-  brief/            2-page PDF brief
-PLAN.md             Revision 2 plan (24-hour cut)
-progress.md         live lab log
-validate.py         official validator (untouched)
+submission/   agent.py · model.py · mapmem.py · weights/doomforge.pt (Git LFS)
+training/     maps/ · teacher/ · collect.py · egomaps.py · bc.py · ppo2.py · evaluate.py · suite/
+tools/        auto_eval.py · record_videos.py · test_agent_contract.py
+docs/         architecture, training, results, official specs, brief, videos
+validate.py   official validator (untouched)
 ```
-
----
 
 ## Compliance
 
-- Built from `Reinforce-SST/devforge-doom-template`; `env/`, `validate.py` and the
-  `DoomAgent` contract are untouched.
-- No Dockerfile, no CI/CD, no network or engine access at inference, no writes outside
-  `/tmp`.
-- Every action is sampled from the trained network's own output distribution;
-  there is no router, reflex or hand-written steering in the shipped Atlas-E agent
-  (Phase 5 removed an `atan2` "compass" from the old reflex). The teacher, A*,
-  distance fields and door state machines live only under `training/` and are
-  never imported by `submission/`.
-- Weights use Git LFS; data shards and checkpoints from intermediate runs are gitignored;
-  the repository is ≪ 1 GB.
-- Reproducible: sampling uses a `torch.Generator` re-seeded on every `reset()`,
-  so identical observations give identical actions on repeat runs.
-
----
-
-## Status and next
-
-Shipped: Atlas-E (single network), val **+7.45** vs the Phase-4 hybrid's +6.19,
-validator PASS. Known gaps, in priority order:
-
-1. **C7/C9–C13** (exploration, ambush, scarce ammo, gauntlet, Freedoom, OOD) are
-   still 0% exits. Longer PPO improves their coverage and proxy (u250: C7 +4.1)
-   but forgets C5; the anti-forgetting run (`ppo_ego2`: anchor to the promoted
-   policy, rehearsal floor, idle penalty) is the next candidate.
-2. **Throughput**: PPO runs at 450–850 steps/s; exploration needs far more
-   samples than the 1.8M used so far.
-3. **Submission**: flip the repository to public and send the URL before the deadline.
+- Built from `Reinforce-SST/devforge-doom-template`; `env/`, `validate.py` and
+  the `DoomAgent` contract are untouched.
+- Every action is sampled from the trained network's output. There is no rule
+  tree, planner, aimbot, router or reflex in the shipped agent. The teacher, A*
+  and distance fields live in `training/` and are never imported by
+  `submission/`.
+- No network or engine access, and no disk writes, at inference. Seeded sampling makes runs
+  reproducible.
+- Weights use Git LFS; intermediate data and checkpoints are gitignored.
 
 <div align="center">
-<sub>Built during Yugaantar DevForge 2026. DOOM is a trademark of id Software; Freedoom is BSD-licensed.</sub>
+<sub>Built for Yugaantar DevForge 2026. DOOM is a trademark of id Software; Freedoom is BSD-licensed.</sub>
 </div>

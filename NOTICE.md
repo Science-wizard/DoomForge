@@ -11,15 +11,13 @@ DoomForge is original work built during Yugaantar DevForge 2026.
 - **ViZDoom 1.3.3** — the DOOM AI research platform; the evaluation engine is the
   vanilla bundled binary.
 - **Freedoom 2** — BSD-licensed free DOOM assets and maps, bundled with ViZDoom. Used
-  as real-map training/evaluation data; MAP23–32 are held out.
+  as real-map training/evaluation data: MAP01–16 train, MAP17–22 validation, MAP23–32 test.
 - **PyTorch, NumPy, Gymnasium** — model and environment plumbing.
 
 ## Assets
 
-- `docs/assets/doomforge.gif` is a replay recorded from our own trained agent in the
-  official wrapper.
-- `docs/assets/*.png` are generated from our training/evaluation logs by
-  `tools/make_charts.py`.
+- `docs/assets/videos/*` are replays recorded from our own trained agent in the
+  official wrapper by `tools/record_videos.py`.
 - No third-party game assets, textures, music or code are redistributed. The generator
   references Freedoom texture names from the IWAD already bundled with ViZDoom.
 

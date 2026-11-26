@@ -1,68 +1,68 @@
 [
  {
-  "category": "C0_sanity",
-  "map_id": "C0_sanity_10000",
-  "mp4": "docs/assets/videos/C0_sanity_10000.mp4",
-  "gif": "docs/assets/videos/C0_sanity_10000.gif",
-  "steps": 64,
+  "category": "C7_exploration",
+  "map_id": "C7_exploration_10000",
+  "mp4": "docs/assets/videos/C7_exploration_10000.mp4",
+  "gif": "docs/assets/videos/C7_exploration_10000.gif",
+  "steps": 915,
   "exit": true,
   "kills": 0,
   "keys": 0,
-  "proxy": 10.9
- },
- {
-  "category": "C5_key_lock",
-  "map_id": "C5_key_lock_10000",
-  "mp4": "docs/assets/videos/C5_key_lock_10000.mp4",
-  "gif": "docs/assets/videos/C5_key_lock_10000.gif",
-  "steps": 268,
-  "exit": true,
-  "kills": 0,
-  "keys": 1,
-  "proxy": 18.0
+  "proxy": 18.5
  },
  {
   "category": "C6_two_key",
-  "map_id": "C6_two_key_10000",
-  "mp4": "docs/assets/videos/C6_two_key_10000.mp4",
-  "gif": "docs/assets/videos/C6_two_key_10000.gif",
-  "steps": 393,
+  "map_id": "C6_two_key_10001",
+  "mp4": "docs/assets/videos/C6_two_key_10001.mp4",
+  "gif": "docs/assets/videos/C6_two_key_10001.gif",
+  "steps": 215,
   "exit": true,
   "kills": 0,
   "keys": 2,
   "proxy": 23.5
  },
  {
-  "category": "C2_arena",
-  "map_id": "C2_arena_10001",
-  "mp4": "docs/assets/videos/C2_arena_10001.mp4",
-  "gif": "docs/assets/videos/C2_arena_10001.gif",
-  "steps": 218,
-  "exit": true,
-  "kills": 4,
-  "keys": 0,
-  "proxy": 11.95
- },
- {
-  "category": "C3_corridor_door",
-  "map_id": "C3_corridor_door_10000",
-  "mp4": "docs/assets/videos/C3_corridor_door_10000.mp4",
-  "gif": "docs/assets/videos/C3_corridor_door_10000.gif",
-  "steps": 73,
+  "category": "C4_room_door",
+  "map_id": "C4_room_door_10000",
+  "mp4": "docs/assets/videos/C4_room_door_10000.mp4",
+  "gif": "docs/assets/videos/C4_room_door_10000.gif",
+  "steps": 201,
   "exit": true,
   "kills": 0,
   "keys": 0,
-  "proxy": 11.7
+  "proxy": 11.1
+ },
+ {
+  "category": "C5_key_lock",
+  "map_id": "C5_key_lock_10000",
+  "mp4": "docs/assets/videos/C5_key_lock_10000.mp4",
+  "gif": "docs/assets/videos/C5_key_lock_10000.gif",
+  "steps": 338,
+  "exit": true,
+  "kills": 0,
+  "keys": 1,
+  "proxy": 18.0
  },
  {
   "category": "C8_backtrack",
   "map_id": "C8_backtrack_10000",
   "mp4": "docs/assets/videos/C8_backtrack_10000.mp4",
   "gif": "docs/assets/videos/C8_backtrack_10000.gif",
-  "steps": 400,
+  "steps": 144,
   "exit": true,
   "kills": 0,
   "keys": 1,
   "proxy": 17.5
+ },
+ {
+  "category": "C2_arena",
+  "map_id": "C2_arena_10001",
+  "mp4": "docs/assets/videos/C2_arena_10001.mp4",
+  "gif": "docs/assets/videos/C2_arena_10001.gif",
+  "steps": 125,
+  "exit": true,
+  "kills": 3,
+  "keys": 0,
+  "proxy": 11.59
  }
 ]

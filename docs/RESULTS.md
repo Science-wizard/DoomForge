@@ -1,403 +1,100 @@
-# Results — Phase 1 benchmark
+# Results
 
-All numbers come from `training/bench.py` (fixed bench seeds `30,000+`, never used for
-training; 8 maps per generated tier; one engine seed; Freedoom MAP23–32 held out). The
-proxy score mirrors the four stated categories with **assumed** weights, because the
-official weights are hidden.
+The official scorer is hidden. These numbers come from our 14-category
+diagnostic suite ([`../training/suite/README.md`](../training/suite/README.md)) using
+the proxy score below. They are not leaderboard claims.
 
 ```
-proxy = 10·exit + 3·key + 3·lock + 0.5·door + 0.3·new_sector (cap 10)
-        + 0.6·kill − 0.01·damage − (3·(1−t/T)+1)·death
+proxy = 10·exit + 3·keys + 3·locks + 0.5·doors + min(0.3·sectors, 10) + 0.6·kills
+        − 0.01·damage − (3·time-left + 1)·died
+headline = tier-weighted mean over categories (tier 1/2/3/4 → 1.0/1.2/1.5/2.0),
+           stratified bootstrap 95% CI over maps
 ```
 
-## Checkpoints compared
+The reference agent is the previous DoomForge design (three networks plus a
+router and reflex rules), run on identical maps for paired comparisons.
 
-| Checkpoint | What it is |
-|---|---|
-| `bc_map2_e0` | Map-aware multimodal BC on nav + arenas; earlier baseline |
-| `bc_use` | Drill-only fine-tune from a base checkpoint; learned doors, forgot arenas |
-| `bc_head` | Frozen trunk, actor-only fine-tune on drills; cannot learn door approach |
-| `bc_arena` | Low-LR fine-tune on 300 extra arena episodes; **shipped** |
-| `bc_anchor` | KL-anchored full fine-tune; stopped before checkpoint (inconclusive) |
+## Held-out test split
 
-## Generated tiers
+140 episodes (10 maps per category, engine seed 0), one logged look
+(`test_touch.log`). The test maps are never used for training or selection.
 
-| Suite | `bc_map2_e0` | `bc_use` | `bc_head` | `bc_arena` |
-|---|---:|---:|---:|---:|
-| t1 arena: exits | 2/8 | 1/8 | 1/8 | **5/8** |
-| t1 proxy | +0.35 | +0.89 | −1.53 | **+5.42** |
-| t1 kills | 10 | **19** | 5 | 4 |
-| t2 rooms: exits | 0/8 | 0/8 | 0/8 | 0/8 |
-| t2 proxy | −0.99 | −0.26 | −0.22 | **−0.18** |
-| t2 coverage | 6.1% | 6.1% | 6.1% | 6.1% |
-| t3 key/lock: exits | 0/8 | 0/8 | 0/8 | 0/8 |
-| t3 proxy | −0.89 | −0.70 | −0.87 | **−0.38** |
-| t4 gauntlet: exits | 0/8 | 0/8 | 0/8 | 0/8 |
-| t4 proxy | −1.61 | −1.41 | −2.17 | **−0.73** |
-| Door drills: exits | 0/8 | **6/8** | 0/8 | 0/8 |
-| Freedoom 23–32: exits | 0/10 | not run | not run | 0/10 |
-| Freedoom proxy | −0.77 | not run | not run | **+1.00** |
-| Freedoom coverage | 1.1% | not run | not run | 3.6% |
+| Category | Tier | Reference | **Atlas-E** | Atlas-E coverage | Atlas-E deaths |
+|---|---:|---:|---:|---:|---:|
+| C0 sanity | 1 | 100% | **100%** | 100% | 0% |
+| C1 duel | 1 | 20% | **90%** | 100% | 0% |
+| C2 arena | 1 | 60% | 50% | 100% | 50% |
+| C3 corridor door | 1 | 100% | **100%** | 100% | 0% |
+| C4 room door | 1 | 30% | **100%** | 73% | 0% |
+| C5 key → lock | 3 | 100% | 80% | 77% | 0% |
+| C6 two keys, two locks | 4 | 100% | **100%** | 100% | 0% |
+| C7 exploration (8–13 rooms) | 2 | 0% | **10%** | 40% | 0% |
+| C8 backtrack | 3 | 30% | **100%** | 100% | 0% |
+| C9 ambush | 3 | 0% | 0% | 28% | 40% |
+| C10 scarce ammo | 4 | 0% | 0% | 16% | 10% |
+| C11 gauntlet | 4 | 0% | 0% | 11% | 20% |
+| C12 Freedoom | 4 | 0% | 0% | 3% | 70% |
+| C13 OOD | 4 | 0% | 0% | 17% | 30% |
+| **Tier-weighted proxy** | | +6.11 | **+8.48** | | |
 
-Tier-weighted proxy (1, 1.2, 1.5, 2) over t1–t4:
-`bc_map2_e0` ≈ **−5.40**, `bc_use` ≈ **−3.29**, `bc_arena` ≈ **+3.17**.
-The arena fine-tune is the clear Phase-1 winner; the door branch still wins door drills.
+Paired difference: **+2.37 (95% CI +1.47…+3.24)**. Coverage on the hard
+categories (C9/C10/C13) is 3–4× the reference's (7% / 5% / 6%).
 
-## Phase 2 — PPO fine-tune
+## Validation
 
-A 25-update PPO run (25.6k environment steps, 8 envs, dense new-cell/door/exit reward)
-from the arena checkpoint:
+Full validation split, two engine seeds (272 episodes):
 
-| Suite | `bc_arena` | PPO-25 |
+| | Reference | Atlas-E |
 |---|---:|---:|
-| t1 exits | 5/8 | **6/8** |
-| t1 proxy | +5.42 | **+8.20** |
-| t1 kills | 4 | **19** |
-| t2 proxy | −0.18 | **+0.48** |
-| t3 proxy | −0.38 | **−0.03** |
-| t4 proxy | −0.73 | **−0.32** |
-| drills | 0/8 | 0/8 |
-| Freedoom 23–32 proxy | +1.00 | **+0.36** |
-| Freedoom coverage | 3.6% | 1.6% |
-| Freedoom kills | 2 | **11** |
+| Tier-weighted proxy | +6.11 | **+8.28** |
+| Paired difference | | **+2.17 (95% CI +1.23…+3.08)** |
 
-Tier-weighted proxy over t1–t4: **+8.09** (from +3.17). PPO improves every tier proxy and tier-1 substantially, but it still does not learn
-USE/door drills. `ppo_explore/ckpt.pt` is the shipped Phase-2 checkpoint. A resumed run and a
-learned mixture-of-experts gate with the door specialist are the next attempts.
+Per category (exit rate): C0 100, C1 95, C2 50, C3 100, C4 100, C5 100, C6 70,
+C7 20, C8 100, C9–C13 0. On C6, 3 of the 10 validation layouts fail (on both
+seeds): the agent holds both keys but stops ~130 units short of the second lock.
+On test, C6 is 10/10.
 
-### Mixture of experts (measured, not shipped)
+## Effect of individual design choices
 
-Two frozen specialists — PPO-25 (tier-1 6/8) and `bc_use` (drills 6/8) — plus a
-2k-parameter gate over observation-only door/ray/map features. Routing results:
+Measured during development on the 70-episode fast validation split unless noted.
 
-| Gate | threshold | t1 | drills | t2 proxy | weighted t1–t4 |
-|---|---|---:|---:|---:|---:|
-| distilled (BC) | 0.5 soft | 2/8 | 6/8 | +0.23 | — |
-| distilled (BC) | 0.5 hard | 6/8 | 0/8 | +0.48 | +8.09 |
-| supervised near-door | 0.1 hard | 5/8 | **6/8** | +0.32 | **+3.59** |
-| supervised near-door | 0.5 hard | 6/8 | 0/8 | +0.48 | +8.09 |
+| Change | Effect |
+|---|---|
+| Corrected dead reckoning (turn-run + friction + wall clip) | map drift after 500 decisions: 431 → 31 units, heading 25° → 0.02° |
+| Heading-up two-scale ego map vs world-aligned map (same BC data) | BC alone solves C3 (80%) and C6 (100%) without any routing |
+| Seeded sampling vs argmax (same weights) | +6.38 → +7.80; removes freeze-at-tie episodes |
+| Single PPO network vs routing to a separate combat expert | routing lowers C2 (80% → 20%) |
+| Seen-floor and stagnation shaping in PPO | C7 training exits 3% → 12–15%; first validation exits on C7 |
+| Heavier death/damage cost | arena deaths 8/10 → 5/10 on validation |
 
-The supervised gate genuinely routes doors (6/8 drills) but the door expert costs one
-tier-1 exit and lowers t2–t4 proxies (t3 −0.22, t4 −0.93), so PPO-25 remains the
-shipped hidden-tier agent. The code stays in `training/moe.py` for Phase 3.
+## Runtime
 
-## What the numbers mean
+Official validator (`validate.py`): **PASS**, init 0.4 s, decision latency
+p50 1.6 ms / p99 1.9 ms / max 3 ms on one CPU thread (budget 40 ms average).
+The contract stress test (`tools/test_agent_contract.py`: NaN/inf/mask
+corruption, determinism) passes. On the validator's single dry-run map
+(`two_rooms.wad`, one monster), the seeded episode ends with the agent killed at
+step 301. The validator still passes, because it checks the contract and timing, not the outcome.
 
-1. **The two-map eval was optimistic.** Tier-1 exits are 2/8 (25%), not 2/2. The hidden
-   suite is larger; report the bench, never the small eval.
-2. **Doors are learnable in isolation.** 360/360 reliable drill episodes + a weighted
-   USE loss took door drills from 0/8 to 6/8 in two epochs.
-3. **Door skill does not transfer to rooms.** The door branch still opens 0 doors on
-   tier-2 maps; straight-corridor drills do not teach “find a door on a wall”.
-4. **Freezing the trunk fails.** Actor-only training cannot map frozen features to door
-   approach; 0/8 drills. The trunk must adapt.
-5. **Full fine-tuning forgets.** Drill-only training drops tier-1 exits from 2/8 to 1/8
-   and loses arena kills/exit behaviour. This is the central Phase-2 problem.
-6. **Room-door demonstrations are reliable** (200/200, random start heading). A focused
-   arena-anchored merge (`bc_combined`: drills + room-doors, KL anchor to `bc_arena` on
-   non-door frames, 1 epoch) was trained and measured: **tier 1 1/8, drills 0/8**. The
-   anchor does not preserve the arena policy under this data mix, and the USE head still
-   does not generalise to rooms. “Add doors without forgetting” remains the Phase-2
-   problem; the KL anchor alone is not the answer.
-7. **Success-only replay does not beat the arena specialist.** Fine-tuning on 652
-   successful episodes (nav+arena, LR 5e-5, 1 epoch) gives tier-1 **4/8** (+4.95), tier-2
-   **−0.54**, drills **0/8**. The arena checkpoint stays (5/8, +5.42, t2 −0.18).
-8. **More arena data helps.** A low-LR fine-tune on 300 extra arena episodes
-   (53% teacher exits) raised held-out tier-1 exits from 2/8 to **5/8** and improved every
-   proxy.
+## Known limitations
+
+- **No exits on C9–C13** (ambush, scarce ammo, gauntlet, Freedoom, OOD). The
+  agent explores, fights and opens doors there for partial credit, but these maps
+  combine long exploration with dense combat. PPO ran for ~1.6M steps on a laptop;
+  this skill class needs far more samples.
+- **Arena survival.** 50% of C2 test arenas end in death.
+- **Small per-category samples.** 10 maps per category, and the drill categories
+  share a layout family, so single categories can swing 20–30 points between
+  checkpoints. The headline CIs account for this; individual category numbers
+  should be read with that in mind.
+- **Proxy weights are assumptions.** Components are reported separately so they
+  can be re-weighted.
 
 ## Reproduce
 
 ```bash
-python -m training.bench --ckpt training/runs/bc_map2/ckpt_e0.pt --maps 8
-python -m training.bench --ckpt training/runs/bc_use/ckpt.pt --maps 8 --no-freedoom
+uv run python -m training.suite.run --agent --split val --per-category 10 --seeds 2 \
+    --workers 8 --out training/runs/suite/val_check
+uv run python -m training.suite.metrics --run training/runs/suite/val_check
+uv run python -m training.suite.compare --baseline <reference run> --candidate training/runs/suite/val_check
 ```
-
-Each run writes `results.json` with every row and the summary. Latency is p99 per map;
-the agent is ~1 ms on CPU, well inside the 40 ms/decision budget.
-
-## Caveats
-
-- One training seed and one engine seed. The bench is a point estimate; 8 maps per tier
-  has a wide confidence interval.
-- Proxy weights are assumptions. The official scorer may weight exit, kills, damage or
-  coverage differently.
-- Generated maps are one distribution; Freedoom MAP23–32 is the only hand-made
-  held-out set and the agent scores near zero there.
-- Hidden tiers may include layouts/skills not represented here (teleporters, lifts,
-  crushing ceilings, boss monsters).
-
----
-
-# Phase 3 — diagnostic suite (suite-1)
-
-The official scorer is hidden and the Phase-2 bench saturated at the easy end
-(t1 6/8, everything else near zero). Phase 3 therefore optimizes a 14-category
-suite designed to expose specific failures. Test seeds are never used for
-training; every test look is logged.
-
-## Fast validation (70 episodes: 5 maps/category, 1 engine seed)
-
-| Category | PPO-25 | Atlas-G BC v5 | Hybrid + reflex |
-|---|---:|---:|---:|
-| C0 sanity | 0% | 100% | **100%** |
-| C1 duel | 10% | 0% | **20%** |
-| C2 arena | 80% | 60% | 80% |
-| C3 corridor door | 0% | 0% | **100%** |
-| C4 room door | 0% | 20% | 20% |
-| C5 key → lock | 0% | 100% | **100%** |
-| C6 two keys, two locks | 0% | 0% | **100%** |
-| C7 exploration | 0% | 0% | 0% |
-| C8 backtrack | 0% | 20% | **40%** |
-| C9 ambush | 0% | 0% | 0% |
-| C10 scarce ammo | 0% | 0% | 0% |
-| C11 gauntlet | 0% | 0% | 0% |
-| C12 Freedoom | 0% | 0% | 0% |
-| C13 OOD | 0% | 0% | 0% |
-| **Tier-weighted proxy** | **+1.175** | **+3.066** | **+6.196** |
-| 95% CI | +0.76 … +1.66 | +2.39 … +3.75 | **+5.46 … +6.98** |
-
-Paired comparison (same maps, candidate − baseline): **+5.025**, 95% CI
-**+3.079 … +7.246**. The promotion gate returns **PROMOTE**: the CI excludes
-zero and no category has a statistically significant >10-point regression.
-The C1/C2 point differences are single-map swings; their paired CIs include zero.
-
-C5/C6 are the clearest signal: the baseline never picks up a key; Atlas-G picks
-both keys and opens both locks (C6 proxy +23.5, SPL 0.38). C0 SPL is 0.96.
-
-## What produced the gains
-
-1. **Purpose-built key categories.** The room generator's locked doors are
-   usually optional: only 5/30 tier-4 maps required a key, 0/30 required two.
-   C5/C6/C8 were rebuilt as drill layouts with cut-edge locks, and the teacher
-   solves them 3/3, 5/5, 3/3. Before this, the "key" categories were not testing
-   keys at all.
-2. **Teacher fixes.** Door side-tracks were treated as passable (false A* paths
-   through walls), the key search required a path to the far side of the locked
-   door, and the frontier fallback rescanned 40 A* goals per replan (hangs).
-   Fixing all three made key/backtrack labels correct and collection fast.
-3. **Atlas-G goal head + frontier channel + 450 key/backtrack demos.**
-   BC v5 solves C0/C5/C8; the old PPO-25 does none.
-4. **Perception-routed hybrid.** When an enemy is visible, the frozen Phase-2
-   PPO-25 runs; otherwise Atlas-G. This restores C1/C2/t1 without giving up the
-   navigation gains. Both experts see every observation, so memory stays current.
-5. **Observation-only freeze reflex.** 8 forward decisions with vf≈0 ⇒ turn 4;
-   8 pure no-ops ⇒ forward+USE. C6 0/5 → 5/5, C3 0/5 → 3/5 in targeted tests.
-
-## Dead ends (kept for honesty)
-
-- **Unbalanced DAgger**: 191 suite episodes with β=0 produced 73% turn labels
-  because the student froze early; BC v3 collapsed to 99.8% spin and 0% exits.
-- **PPO v2 from BC v5** (suite reward + key potential, 40 updates): mean return
-  1.4 → 8.5, but C5 fell to 0/5 and C6/C8 did not beat BC v5. Not shipped.
-- **Per-step router without hysteresis**: C2 4/5 but frequent switches reset
-  recurrent state; 16-step hysteresis is the shipped setting.
-- **Door-angle reflex** alone (USE when any door ray is within 102 units) hurt
-  C5 (5/5 → 3/5); the shipped reflex is conditional on a freeze.
-
-## Official-style bench (hybrid agent, end-to-end)
-
-`training/bench.py --agent` on fixed seeds 30 000+, 12 maps per generated tier
-except t4 (8) and Freedoom MAP23–32 (10):
-
-| Suite | n | Exit | Kills | Keys | Doors | Coverage | Proxy |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| t1 arena | 12 | **7/12** | 25 | 0 | 0 | 100% | +5.49 |
-| t2 rooms | 12 | 0/12 | 4 | 0 | 12 | 12.7% | +0.24 |
-| t3 key/lock | 12 | 0/12 | 0 | 0 | 6 | 5.7% | −0.10 |
-| t4 gauntlet | 8 | 0/8 | 3 | 0 | 8 | 3.6% | −0.62 |
-| drills | 12 | 0/12 | 0 | 0 | 2 | 30.8% | +0.48 |
-| Freedoom 23–32 | 10 | 0/10 | **23** | 0 | 4 | 2.5% | **+0.89** |
-
-PPO-25's Phase-2 numbers (8 maps/tier) were t1 6/8 exits/+8.20, t2 +0.48,
-t3 −0.03, t4 −0.32, drills +0.60, Freedoom +0.36. The hybrid keeps arena
-exits/kills (7/12, 25 kills vs 19) and improves Freedoom proxy (23 kills, 4
-doors), while t2–t4 proxies are within ~0.3 of PPO-25. The suite, not this bench,
-is the optimization target; this table is the continuity check.
-
-Why the old bench t2–t4 do not improve as much: they are monster maps, so the
-router hands them to the combat expert by design; the navigation expert only
-takes over when no enemy is visible. The suite's C5/C6/C8 remove monsters
-precisely to isolate the key skill.
-
-## Held-out test (fast, 70 episodes, seeds 30 000+)
-
-The final hybrid was scored once on the untouched test split
-(`test_hybrid_fast`, logged in `test_touch.log`):
-
-- tier-weighted proxy **+6.397** (95% CI +5.722 … +7.081)
-- C0 100%, C1 40%, C2 40%, C3 100%, C4 60%, C5 100%, C6 100%, C8 40%
-- paired delta vs PPO-25: **+5.514** (95% CI +3.585 … +7.690)
-- C7, C9–C13 0%
-
-This is consistent with validation (+6.196), so the checkpoint is not
-overfitting the val maps. Test C2 is 60% (3/5) with 2.8 kills/episode; the two losses are arena maps where
-the combat expert is overwhelmed. The paired PPO-25 test run is reported
-alongside it in the final table; C2 variance is a known limitation of a 5-map
-sample.
-
-## Pre-existing checkpoints on the same val-fast split
-
-| Checkpoint | What it is | Weighted proxy |
-|---|---|---:|
-| `bc_arena` | Phase-1 arena specialist (shipped before PPO) | +0.924 |
-| `bc_use` | Phase-1 door specialist | +1.168 |
-| PPO-25 | Phase-2 shipped checkpoint | +1.175 |
-| Atlas-G BC v5 | this phase, single model | +3.066 |
-| Hybrid + reflex + door specialist | shipped candidate | **+6.20** |
-
-All were run through the same map set, seeds and metric code. The hybrid beats
-every earlier checkpoint by at least **+4.7** weighted proxy. The MoE gate was
-not re-run on the suite because it is not shippable in its Phase-2 form (it was
-measured negative on t2–t4 and is superseded by the perception router).
-
----
-
-# Phase 4 — closing C3 with a door specialist
-
-The Phase-3 hybrid left C3 (straight corridor door) at 0%: the learned policy
-strafed into a corner and the reflex's blind turn was undone. A third expert was
-trained and routed behind a conservative, observation-only gate.
-
-## Specialist
-
-- **Data**: 150 teacher episodes on the C3 train split + 150 on C4 (both 100%
-  and 143/150 teacher exits), added to the Phase-3 demonstration pool.
-- **Training**: BC from BC v5 with a KL anchor on all frames (weight 0.5),
-  learning rate 5e-5, one epoch.
-- **Effect**: C3 5/5; C4 0/5; C5/C6 unprotected collapse to 0/5, so the
-  specialist is only safe behind a gate.
-- **Gate** (perception only): no enemy, no locked door seen, no key visible, no
-  key held, at least one door seen, and the median side ray at first activation
-  is below **0.23** (a narrow corridor). The decision latches for the episode.
-  C5/C6 never satisfy it (locked door/key); C4 and the validator's two-room map
-  are wider than 0.23 and stay on the generalist.
-
-## Result
-
-| Split | Phase 3 hybrid | + door specialist |
-|---|---:|---:|
-| Val fast | +5.696 | **+6.196** (CI +5.46…+6.98) |
-| Test fast | +5.790 | **+6.397** (CI +5.72…+7.08) |
-| C3 corridor door | 0% | **100%** |
-| C4 room door | 20% val / 40% test | 0% val / 60% test |
-| C5 / C6 | 100% / 100% | 100% / 100% |
-| C0 / C2 | 100% / 80% | 100% / 80% |
-| Paired delta vs PPO-25 | +4.52 val | **+5.03 val**, +5.51 test |
-
-The gate passes: CI excludes zero and no significant category regression. The
-validator now exits its dry-run map in 195 steps.
-
-## Dead ends in this phase (kept for honesty)
-
-- **BC v6/v7 without a gate**: adding 300 C3/C4 episodes destroyed C0/C5
-  (0–1/5) no matter the anchor; the specialist is only usable behind the gate.
-- **Visible-door controller**: turn/forward/USE whenever a door ray is visible
-  dropped C5 from 5/5 to 0/5 and did not fix C3.
-- **Longer blind reflex** (10/16 decisions): preserved C5/C6 but C3 stayed 0/5.
-- **Logit blending** of Atlas-G and PPO-25: C2 5/5 → 3/5, C5 3/3 → 0/3.
-- **Pure frontier controller** on C7: 0/5 exits; the frontier signal is too local
-  for an 8-room map.
-- **Teacher on Freedoom/ambush/resource**: 0/3 exits, so no useful labels for
-  C9–C12 yet.
-
-Remaining gaps: C4 (room-wall doors), C7 (exploration), C9–C13 (ambush,
-resource, gauntlet, Freedoom transfer, OOD).
-
-### Additional C4/C7 attempts (not promoted)
-
-- C4 specialist with 550 room-door demos (392 exits): 1/5 val — no gain.
-- C7 specialist with 300 teacher demos (165 exits): 0/5 val.
-- KL-anchored PPO on C7 (40 updates, β=0.1): training return 8.1, 0/5 argmax.
-- Full-grid frontier BFS with door USE: 0/5 C7.
-- Teacher door reflex fixed (center rays, path-gated): C7 teacher 6/10, still
-  short of reliable labels; C9/C10/C12 teacher remains 0/3.
-
----
-
-# Phase 5 — Atlas-E: one network, fixed odometry, scaled PPO
-
-Phase 5 replaced the three-network hybrid (Atlas-G + PPO-25 + door specialist +
-reflex + an undocumented compass) with a single Atlas-E network. Design:
-[`ARCHITECTURE.md` §6](ARCHITECTURE.md#6-atlas-e-phase-5-shipped).
-
-## What was wrong (measured)
-
-| Problem | Evidence | Fix |
-|---|---|---|
-| Map heading drift | 33° error after 100 steps: turn reversals keep Doom's accelerated turn rate | turn-run counts either direction (0.02° after 500 steps) |
-| Map position drift | 431 units after 500 steps: mean-velocity integration; momentum reported while pinned to walls | per-tic friction model + ray-distance clip (31 units) |
-| PPO had no bootstrap | GAE used `V=0` after every 128-step rollout and treated time-outs as deaths | bootstrap from the next observation; time-left in the critic |
-| PPO "return" was meaningless | `mean_return` was a cumulative sum that never reset (PPO v2's "1.4 → 8.5") | per-episode logging, per-category exit rates |
-| PPO pose off by one | map integrated the action from two steps earlier | integrate the executed action |
-| PPO scale | 8 sequential envs, ~50 steps/s, ≤41k steps per run | 54 envs in 9 processes, double-buffered, 450–850 steps/s, 1.8M steps |
-| Compass reflex | `atan2` steering toward remembered doors/frontiers (RULES §1 risk) | removed; val proxy unchanged (+6.13 vs +6.20, CI spans 0) |
-| 20 train maps/category | PPO would memorise | 150/category (1,966 maps), 0 hash overlap with val/test |
-
-## Training
-
-1. **BC** (`bc_ego1`): 436k teacher steps from 13 datasets (nav, arenas, doors,
-   key, key-chain, backtrack, C3/C4, room-door, tier-2), ego maps regenerated
-   offline by replaying the stored observations (`training/egomaps.py`), 5 epochs,
-   val loss 0.63 (Atlas-G BC v5: 0.99).
-2. **PPO** (`training/ppo2.py`, `ppo_ego1`): asymmetric privileged critic,
-   geodesic progress shaping to the current objective, proxy rewards,
-   learning-progress curriculum over the 14 train categories + 15% fresh
-   generated maps, exact KL anchor to the BC policy (0.3 → 0.02).
-
-## Validation (full val split: 136 episodes, 10 maps/category, 1 seed)
-
-| Category | Shipped Phase-4 hybrid | **Atlas-E PPO u50** | PPO u250 | 5-ckpt soup |
-|---|---:|---:|---:|---:|
-| C0 sanity | 100% | 100% | 100% | 100% |
-| C1 duel | 30% | **90%** | 100% | 100% |
-| C2 arena | 70% | **80%** | 70% | 90% |
-| C3 corridor door | 100% | 100% | 100% | 100% |
-| C4 room door | 40% | **60%** | 100% | 70% |
-| C5 key → lock | 100% | 100% | **20%** | 70% |
-| C6 two keys | 100% | 100% | 100% | 100% |
-| C8 backtrack | 40% | **100%** | 100% | 100% |
-| C7, C9–C13 | 0% | 0% | 0% | 0% |
-| **Tier-weighted proxy** | +6.19 | **+7.45** | +7.37 | +7.57 |
-| Paired Δ vs hybrid (95% CI) | — | **+1.26 (+0.62…+1.93)** | +1.18 (+0.13…+2.23) | +1.37 (+0.50…+2.22) |
-| Gate | — | **PROMOTE** | HOLD (C5 −80) | HOLD (C5 −30) |
-
-Atlas-E u50 is the only candidate with a positive CI **and** no category
-regression, so it ships. The later checkpoints learn more exploration (u250: C7
-proxy +4.1, C13 +2.1, C4 100%) but forget C5: they walk to the locked door,
-press USE and idle instead of detouring to the key alcove.
-
-**Sampling vs argmax.** The same u50 weights score +6.38 (fast val) under argmax
-and +7.80 sampled at temperature 1. Argmax turns near-ties into freezes (90%+
-no-op episodes); seeded sampling keeps every run reproducible.
-
-**Hybrid vs single.** Routing Atlas-E through the old PPO-25 combat expert
-*lowers* the score (C2 80% → 20% on fast val): the single network now fights
-better than the specialist it replaced.
-
-## Robustness and held-out test
-
-- **Two engine seeds** (272 val episodes): Atlas-E u50 +7.37 vs hybrid +6.11,
-  paired +1.26 (CI +0.63…+1.92), PROMOTE. The `ppo_ego2` continuation u50
-  (anchored to u50, rehearsal floor 0.6, idle penalty) scores +7.50 with the
-  first C7 exits (10%), C4 90% and C2 85%, but loses keys (C5 80%, C6 70%) and is
-  only +0.14 over u50 (CI −0.60…+0.81), so it is the documented alternate.
-- **Test split** (one logged look, 140 episodes, `test_atlas_e` vs
-  `test_hybrid_p4` on identical maps): **+7.02 vs +6.11, paired +0.91
-  (CI +0.04…+1.76), PROMOTE.** C1 20→100%, C8 30→100%, C4 30→50%; C5 100→70%
-  and C0 100→90% (not significant at n=10); C7/C9–C13 0%.
-
-## Official validator
-
-PASS: init 0.4 s, dry-run map exited in 201 steps, p50 1.6 ms / p99 2.0 ms per
-decision (2.2 / 4.8 ms under training load), contract stress test
-(NaN/inf/mask corruption, determinism) PASS.
-
-## Still failing
-
-C7 exploration and C9–C13 (ambush, scarce ammo, gauntlet, Freedoom, OOD) are
-still 0% exits. Coverage and proxy on them improve with more PPO (u250), at the
-cost of C5. Trajectory plots show the agent covering only 2–3 small rooms in
-1,050 steps on C7: it idles and misaligns with door tunnels. Next steps:
-anti-forgetting PPO (anchor to the promoted policy, rehearsal floor, idle
-penalty; `ppo_ego2`), then longer runs at higher throughput.
