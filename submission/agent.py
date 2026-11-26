@@ -23,13 +23,16 @@ WEIGHTS = WEIGHTS_DIR / "doomforge.pt"
 
 try:  # normal case: the scorer puts submission/ on sys.path
     from model import DoomNet
+    from mapmem import MapBuilder
 except ImportError:  # package-style import
     from submission.model import DoomNet
+    from submission.mapmem import MapBuilder
 
 RGB_H, RGB_W = 30, 40
 
 
-def _flatten(obs: dict, prev: np.ndarray | None, turn_held: int, use_last: int) -> dict:
+def _flatten(obs: dict, prev: np.ndarray | None, turn_held: int, use_last: int,
+             map_crop=None, pose=None) -> dict:
     rays = obs["rays"]
     ent = obs["visible_entities"]
     rgb = np.asarray(obs["rgb"], dtype=np.uint8)
@@ -48,6 +51,8 @@ def _flatten(obs: dict, prev: np.ndarray | None, turn_held: int, use_last: int) 
         "vitals": np.nan_to_num(np.asarray(obs["vitals"], np.float32), nan=0.0, posinf=1e4, neginf=-1e4),
         "rgb": rgb,
         "prev_action": p,
+        "map": np.zeros((5, 32, 32), np.uint8) if map_crop is None else np.asarray(map_crop, np.uint8),
+        "pose": np.zeros(6, np.float32) if pose is None else np.asarray(pose, np.float32),
     }
 
 
@@ -75,11 +80,14 @@ class DoomAgent:
         self.prev = None
         self.turn_held = 0
         self.use_last = 0
+        self.map = MapBuilder()
 
     @torch.inference_mode()
     def act(self, observation: dict) -> np.ndarray:
         try:
-            flat = _flatten(observation, self.prev, self.turn_held, self.use_last)
+            self.map.update(observation, self.prev)
+            flat = _flatten(observation, self.prev, self.turn_held, self.use_last,
+                            map_crop=self.map.crop(), pose=self.map.pose())
             batch = {
                 "rays_dist": torch.as_tensor(flat["rays_dist"][None], device=self.device),
                 "rays_hit": torch.as_tensor(flat["rays_hit"][None], device=self.device),
@@ -89,6 +97,8 @@ class DoomAgent:
                 "vitals": torch.as_tensor(flat["vitals"][None], device=self.device),
                 "rgb": torch.as_tensor(flat["rgb"][None], device=self.device, dtype=torch.float32) / 255.0,
                 "prev_action": torch.as_tensor(flat["prev_action"][None], device=self.device),
+                "map": torch.as_tensor(flat["map"][None], device=self.device, dtype=torch.float32),
+                "pose": torch.as_tensor(flat["pose"][None], device=self.device),
             }
             logits, value, aux, self.h = self.net.forward_step(batch, self.h)
             heads = self.net.flat_action(logits, sample=False)
@@ -123,6 +133,8 @@ class DoomAgent:
             "vitals": torch.zeros(1, 17, device=self.device),
             "rgb": torch.zeros(1, 3, RGB_H, RGB_W, device=self.device),
             "prev_action": torch.zeros(1, 12, device=self.device),
+            "map": torch.zeros(1, 5, 32, 32, device=self.device),
+            "pose": torch.zeros(1, 6, device=self.device),
         }
         with torch.inference_mode():
             for _ in range(3):

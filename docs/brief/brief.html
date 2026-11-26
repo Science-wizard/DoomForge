@@ -9,160 +9,168 @@
   @page { size: A4; margin: 13mm 14mm 12mm 14mm; }
   html, body { margin:0; padding:0; }
   body { font-family: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
-         color:var(--ink); font-size:9.2pt; line-height:1.34; }
+         color:var(--ink); font-size:9.1pt; line-height:1.33; }
   h1 { font-size:19pt; margin:0 0 2mm; letter-spacing:-0.4pt; }
-  h2 { font-size:11.2pt; margin:4.2mm 0 1.6mm; padding-bottom:1mm; border-bottom:1px solid var(--rule); }
-  h3 { font-size:9.6pt; margin:2.6mm 0 1mm; }
-  p { margin:0 0 1.8mm; }
-  ul { margin:0 0 1.8mm; padding-left:4.2mm; }
-  li { margin:0 0 0.8mm; }
-  .kicker { color:var(--accent); font-weight:700; font-size:8.4pt; letter-spacing:1.1pt; text-transform:uppercase; }
-  .sub { color:var(--muted); font-size:9.4pt; margin:0 0 3mm; }
-  .two { display:grid; grid-template-columns:1fr 1fr; gap:6mm; }
-  .panel { background:var(--panel); border:1px solid var(--rule); border-radius:2mm; padding:2.6mm 3mm; }
+  h2 { font-size:11.2pt; margin:4mm 0 1.5mm; padding-bottom:1mm; border-bottom:1px solid var(--rule); }
+  h3 { font-size:9.5pt; margin:2.4mm 0 1mm; }
+  p { margin:0 0 1.7mm; }
+  ul { margin:0 0 1.7mm; padding-left:4.2mm; }
+  li { margin:0 0 0.75mm; }
+  .kicker { color:var(--accent); font-weight:700; font-size:8.3pt; letter-spacing:1.1pt; text-transform:uppercase; }
+  .sub { color:var(--muted); font-size:9.4pt; margin:0 0 2.8mm; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:5.5mm; }
+  .panel { background:var(--panel); border:1px solid var(--rule); border-radius:2mm; padding:2.5mm 3mm; }
   .panel h3 { margin-top:0; }
-  table { width:100%; border-collapse:collapse; font-size:8.5pt; margin:1mm 0 2mm; }
-  th, td { text-align:left; padding:1.05mm 1.4mm; border-bottom:1px solid var(--rule); }
-  th { color:var(--muted); font-weight:600; font-size:8pt; text-transform:uppercase; letter-spacing:.4pt; }
+  table { width:100%; border-collapse:collapse; font-size:8.4pt; margin:1mm 0 2mm; }
+  th, td { text-align:left; padding:1mm 1.3mm; border-bottom:1px solid var(--rule); }
+  th { color:var(--muted); font-weight:600; font-size:7.9pt; text-transform:uppercase; letter-spacing:.4pt; }
   .num { text-align:right; font-variant-numeric:tabular-nums; }
-  .flow { font-family:"SFMono-Regular", Menlo, monospace; font-size:7.6pt; line-height:1.45;
-          background:#0f1419; color:#e7edf3; padding:3mm; border-radius:2mm; white-space:pre; }
-  .tag { display:inline-block; border:1px solid var(--rule); border-radius:10mm; padding:0.4mm 2mm;
-         font-size:7.6pt; color:var(--muted); margin:0 1mm 1mm 0; }
-  .stat { font-size:15pt; font-weight:700; letter-spacing:-0.4pt; }
-  .small { font-size:7.9pt; color:var(--muted); }
+  .flow { font-family:"SFMono-Regular", Menlo, monospace; font-size:7.5pt; line-height:1.42;
+          background:#0f1419; color:#e7edf3; padding:2.8mm; border-radius:2mm; white-space:pre; }
+  .stat { font-size:14pt; font-weight:700; letter-spacing:-0.4pt; }
+  .small { font-size:7.8pt; color:var(--muted); }
   .page-break { break-before: page; }
-  .foot { margin-top:2.5mm; padding-top:1.6mm; border-top:1px solid var(--rule); color:var(--muted); font-size:7.6pt; }
-  code { font-family:"SFMono-Regular", Menlo, monospace; font-size:8pt; }
+  .foot { margin-top:2.2mm; padding-top:1.4mm; border-top:1px solid var(--rule); color:var(--muted); font-size:7.5pt; }
+  code { font-family:"SFMono-Regular", Menlo, monospace; font-size:7.9pt; }
   .accent { color:var(--accent); font-weight:600; }
-  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:2.2mm; margin:2mm 0 2.5mm; }
-  .kpi { border:1px solid var(--rule); border-radius:2mm; padding:2mm; }
-  .kpi .lbl { font-size:7.4pt; color:var(--muted); text-transform:uppercase; letter-spacing:.4pt; }
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:2.2mm; margin:2mm 0 2.4mm; }
+  .kpi { border:1px solid var(--rule); border-radius:2mm; padding:1.9mm; }
+  .kpi .lbl { font-size:7.3pt; color:var(--muted); text-transform:uppercase; letter-spacing:.4pt; }
 </style>
 </head>
 <body>
 
 <div class="kicker">Yugaantar DevForge · Track 1 · Can It Play DOOM?</div>
 <h1>DoomForge</h1>
-<p class="sub">A compact spatial-memory agent that learns zero-shot DOOM from ego-centric geometry —
-1.2 M parameters, single-digit milliseconds on one CPU thread, no pixels required.</p>
+<p class="sub">A 1.56 M-parameter multimodal agent that <b>sees exits</b>, remembers doors, and decides in
+0.6 ms on one CPU thread — trained by privileged expert seeding and PPO on a generated four-tier curriculum.</p>
 
 <h2>Unique selling proposition</h2>
-<p>Most DOOM bots are either pixel-hungry CNN policies that cannot afford the evaluation CPU budget, or
-reactive policies that cannot remember a locked door they saw three rooms ago. DoomForge separates the two
-problems: a <span class="accent">lightweight geometric encoder</span> consumes the raycast/entity/vitals contract,
-and a <span class="accent">Neural Cartographer</span> builds an explicit allocentric belief map for backtracking.
-Training is expert-seeded: a privileged A* teacher demonstrates navigation and combat, behaviour cloning gives
-the network a strong prior, and PPO fine-tunes on a generated four-tier curriculum. The result is a tiny,
-deterministic, 2 ms/decision policy that survives the 1-CPU sandbox with a >10× latency margin.</p>
+<p>Two failure modes dominate zero-shot DOOM: the agent cannot recognise the exit, and it cannot remember a
+locked door long enough to find the key and return. The official structured observations expose neither exit
+nor key/lock colour, so DoomForge adds a <span class="accent">cheap colour pathway</span> (120×160 RGB pooled
+to 30×40) and trains <span class="accent">exit, bearing, distance and key-colour auxiliary heads</span> from
+privileged map geometry. The policy is a compact ray/entity/vitals/RGB encoder feeding a GRU with factorised
+action heads. Training is <span class="accent">expert-seeded</span>: a privileged A* teacher demonstrates
+navigation, doors and combat; behaviour cloning gives a strong prior; PPO fine-tunes on a generated curriculum.
+The result fits the 1-CPU, 40 ms/decision sandbox with a >60× latency margin.</p>
 
 <div class="kpis">
-  <div class="kpi"><div class="lbl">Parameters</div><div class="stat">1.2 M</div></div>
-  <div class="kpi"><div class="lbl">CPU decision</div><div class="stat">1–3 ms</div></div>
+  <div class="kpi"><div class="lbl">Parameters</div><div class="stat">1.56 M</div></div>
+  <div class="kpi"><div class="lbl">CPU decision (p50)</div><div class="stat">0.6 ms</div></div>
   <div class="kpi"><div class="lbl">Validator</div><div class="stat">PASS</div></div>
-  <div class="kpi"><div class="lbl">Repo size</div><div class="stat">&lt; 30 MB</div></div>
+  <div class="kpi"><div class="lbl">Init</div><div class="stat">0.6 s</div></div>
 </div>
 
-<h2>System architecture</h2>
-<div class="flow">  observation (rays 64 · entities ≤32 · vitals 17)
-        │                │                  │
-  circular Conv1d   type-embed + MHA     MLP (17→64)
-        └────────────── 128 ───────────────┘
-                        │
-                 concat 320 → GRU(320) → h_t
-                        │
-        ┌───────────────┼────────────────┬───────────────┐
-   move/strafe/turn  attack/use/next   value V(s)   aux: keys, enemy, door
-        └───────────────┴────────────────┘
-                        │
-              argmax heads → MultiBinary(9) → 4 game tics</div>
+<h2>Architecture — Baseline A</h2>
+<div class="flow">  rays 64 ─► circular Conv1d ×3 ─────────────────────► 128 ─┐
+  entities ≤32 ─► type embed + MHA + masked pool ──────► 128 ─┤
+  vitals 17 ─► MLP ────────────────────────────────────►  64 ─┤
+  RGB 30×40×3 ─► Conv2d ×3 (stride 2) ─────────────────► 128 ─┤
+  prev action 12 ─► MLP ──────────────────────────────►  32 ─┤
+                                                              ├─ 480 → GRU(384) → 384
+                                                              │
+        ┌──────────────────────┬──────────────────────────────┼─────────────────────┐
+        ▼                      ▼                              ▼                     ▼
+  move/strafe/turn        value V(s)              exit visible/bearing/dist     keys, enemy,
+  attack/use/next                                  key colours, damage           door ahead</div>
 
-<div class="two" style="margin-top:2.4mm">
+<div class="two" style="margin-top:2.2mm">
 <div class="panel">
-<h3>Perception &amp; memory</h3>
+<h3>Why this is not an SB3 baseline</h3>
 <ul>
-<li><b>Rays:</b> distance, six hit one-hots and ray angle through a circular 1-D CNN — a metric 360° LIDAR.</li>
-<li><b>Entities:</b> permutation-invariant attention over relative position, velocity and coarse type; handles zero to 32 enemies/items.</li>
-<li><b>Cartographer:</b> a 48×48 allocentric belief grid at 128 units/cell, warped by learned odometry, written with the polar ray scan, updated by a ConvGRU; 32 relative probes + pooling feed the policy. Auxiliary losses predict the visited mask, the next scan and relative door/key/exit labels.</li>
+<li><b>Colour-aware:</b> pooled RGB is the only way to see exit signs and blue/red/yellow doors; the auxiliary
+heads force the encoder to represent them.</li>
+<li><b>Attention over entities:</b> permutation-invariant, variable count, masked null slot — not a flattened vector.</li>
+<li><b>Factorised actions:</b> six heads (216 joint actions) instead of 9 independent bits; no contradictory
+buttons, allowed as action masking.</li>
+<li><b>Privileged teacher + BC:</b> sample-efficient; PPO then optimises the hidden scoring function.</li>
 </ul>
 </div>
 <div class="panel">
-<h3>Action &amp; runtime</h3>
+<h3>Where the memory goes (B+ lite)</h3>
 <ul>
-<li>Factorised heads: <code>move(3) × strafe(3) × turn(3) × attack(2) × use(2) × next(2)</code>. No contradictory buttons, 15 logits instead of a 512-way action.</li>
-<li>Deterministic argmax, no dropout, zeroed hidden state in <code>reset()</code>; identical output on repeat runs.</li>
-<li><code>torch.set_num_threads(1)</code>; one checkpoint, ~5 MB, Git LFS; no network, no engine, no writes outside <code>/tmp</code>.</li>
-<li>Validator margins: init &lt; 1 s (limit 60 s), p99 &lt; 5 ms (limit 5 s), RAM &lt; 1 GB (limit 8 GB).</li>
+<li>Exact heading integration from the measured turn table; translation from ego velocity; optional
+translation-only scan match (±16 units, ~81 candidates, &lt;0.5 ms).</li>
+<li>64-unit allocentric map, 96×96, channels free/wall/door/locked/visited/frontier/exit; two egocentric
+32×32 crops feed a small CNN.</li>
+<li>≤64 event tokens for locked doors, keys and exit cues, re-projected every step and read by GRU attention.
+This is the long-horizon fix and the live-demo overlay.</li>
+<li>Deterministic writer = perception; no A*/BFS/planner at inference. Promoted only if it beats A on held-out
+proxy score.</li>
 </ul>
 </div>
 </div>
 
 <h2>Training &amp; exploration pipeline</h2>
-<p><b>1. Map factory.</b> The engine builds BSP nodes at load time, so we emit node-less Doom-binary maps:
-BSP-partitioned rooms with isolated 1-tile doors, keycard→locked-door→exit chains, arena cover, four tiers.
-Thirty-two Freedoom maps are extracted in three variants (raw, doors-open, doors-open+no-monsters) for real-layout
-diversity. <b>2. Privileged teacher.</b> A 16-unit occupancy grid, A* with door costs, a door state machine, exit
-switches and circle-strafing combat generate demonstrations; the teacher reads only training-time ground truth.
-<b>3. Behaviour cloning.</b> Six-head cross-entropy + self-supervised key/enemy/door heads + a Monte-Carlo critic,
-trained on padded episodes so the GRU learns multi-second memory. <b>4. PPO.</b> Clipped surrogate with GAE;
-reward = exit +10, key +2, lock +1, kill +0.6, damage −0.02/hp, death −5, new-cell +0.01,
-distance-to-objective −0.0002 × BFS cells. Curriculum: drills → tier 2 → tier 2–3 with monsters → full
-tier 2–4 + Freedoom. <b>5. Selection.</b> A proxy leaderboard mirrors the scorer’s non-binary shape; the best
-checkpoint per latency bucket is kept.</p>
+<p><b>Maps.</b> ZDoom builds BSP nodes at load time, so we emit node-less Doom-binary maps: BSP rooms,
+isolated 1-tile doors, coloured locks, a visible exit-sign wall, arena cover, four difficulty tiers. Freedoom
+MAP01–22 supply real geometry; MAP23–32 are never trained on. <b>Teacher.</b> A 16-unit navigation grid, A*
+with door costs, a door state machine, switch/walk exits and circle-strafing combat produce demonstrations with
+privileged exit/key/door labels. <b>BC.</b> Six-head cross-entropy + exit/key-colour/damage/value heads on
+128-step windows. <b>PPO.</b> Clipped surrogate, GAE, recurrent state, reward = exit +10, key +3, lock +3,
+new sector +0.3, new cell +0.01, kill +0.6, damage −0.01/HP, early death penalty, potential-based objective
+shaping. <b>Selection.</b> A proxy scorer mirrors the four official categories and reports every component
+separately; the best held-out checkpoint is shipped.</p>
 
-<div class="foot">DoomForge · Track 1 · page 1/2 · repo: github.com/Science-wizard/DoomForge</div>
+<div class="foot">DoomForge · Track 1 · page 1/2 · github.com/Science-wizard/DoomForge</div>
 
 <div class="page-break"></div>
-
 <div class="kicker">DoomForge · Track 1</div>
 <h2 style="margin-top:1mm">What the agent learns, and how we measure it</h2>
 
 <div class="two">
 <div>
-<h3>Exploration that is not wall-following</h3>
-<p>Spinning in place earns nothing: the scorer counts unique sectors. Our intrinsic term rewards <i>new
-navigable cells</i> and the policy is trained across randomised room graphs, so the behaviour that generalises is
-“enter the next unseen region”, not “hug the nearest wall”. Door rays and locked-door rays are explicit inputs,
-and key flags are in the vitals vector, so key→locked-door→exit is representable as a memory query rather than a
-memorised route.</p>
+<h3>Exit perception</h3>
+<p>Every generated exit has a bright sign wall behind a walk-over line; Freedoom exits are switches. The
+exit-visible head is a 13-class bearing + 6-bin distance problem, trained from privileged exit linedefs with a
+12× positive weight. The GRU sees the sign, the bearing head tells it where, and the policy crosses the line.
+Ablation: RGB on/off, exit head on/off.</p>
 
-<h3>Combat that survives tier 1</h3>
+<h3>Doors and key colour</h3>
+<p>Blue/red/yellow door textures and coloured key pickups are the only source of colour identity; the
+key-colour head learns it from RGB. USE is an edge, and the reward penalises useless USE so the policy does not
+bounce doors. Door drills isolate the skill; PPO learns recovery.</p>
+
+<h3>Exploration</h3>
+<p>Spinning earns nothing. The shaping rewards new sectors (the scorer’s unit) and new 64-unit cells with a
+cap, so wall-following cannot out-earn entering a new room. Curriculum: arenas → 1–3 rooms → 4–10 rooms →
+key chains → full pool.</p>
+
+<h3>Combat</h3>
 <p>Hitscan enemies punish standing still. The teacher demonstrates circle-strafing and backpedalling; PPO
-optimises kills minus damage. Entity attention gives the policy a permutation-invariant threat list, and the
-factorised heads can fire while strafing without ever emitting forward+backward.</p>
-
-<h3>Why this generalises</h3>
-<ul>
-<li><b>No absolute coordinates:</b> every feature is ego-centric; the map is built from motion, not given.</li>
-<li><b>Map randomisation:</b> room count, sizes, door placement, keys, monster mix, textures and lighting.</li>
-<li><b>Two distributions:</b> generated layouts for coverage, Freedoom for real geometry and texture statistics.</li>
-<li><b>Compact hypothesis class:</b> 1.2 M parameters cannot memorise 32 maps, so it must learn transferable geometry.</li>
-</ul>
+optimises kills minus damage. Attention over up to 32 entities gives a permutation-invariant threat list.</p>
 </div>
 <div>
 <h3>Proxy leaderboard (held-out seeds)</h3>
 <table>
-<tr><th>Tier</th><th>Skill</th><th class="num">Exit</th><th class="num">Keys</th><th class="num">Kills</th></tr>
-<tr><td>1</td><td>Combat &amp; survival</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
-<tr><td>2</td><td>Multi-room exploration</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
-<tr><td>3</td><td>Long-horizon progression</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
-<tr><td>4</td><td>Full gauntlet</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
-<tr><td>F</td><td>Freedoom unseen</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+<tr><th>Split</th><th>Skill</th><th class="num">Exit</th><th class="num">Keys</th><th class="num">Proxy</th></tr>
+<tr><td>gen_val t1</td><td>Combat</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+<tr><td>gen_val t2</td><td>Exploration</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+<tr><td>gen_val t3</td><td>Key → lock</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+<tr><td>gen_val t4</td><td>Gauntlet</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+<tr><td>Freedoom 23–32</td><td>Unseen hand-made</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
 </table>
-<p class="small">Filled from the final checkpoint; the table is regenerated by <code>training/evaluate.py</code> so the
-brief and the README never disagree.</p>
+<p class="small">Generated by <code>training/evaluate.py</code> from the shipped checkpoint; the README embeds the
+same numbers and the training curves.</p>
 
-<h3>Failure modes we designed for</h3>
+<h3>Failure modes and mitigations</h3>
 <ul>
-<li><b>Door frame deadlock:</b> the largest expert failure; addressed with isolated doors, door drills, a
-reactive USE head and PPO recovery.</li>
-<li><b>Backtracking drift:</b> a GRU alone forgets; the Cartographer is ablated against it and kept only if tier-3
-exit rate per millisecond improves.</li>
-<li><b>Hitscan attrition:</b> damage penalty and strafing; health/ammo pickups are visible entity types.</li>
-<li><b>Distribution shift:</b> Freedoom maps are never used for the headline number unless they are held out.</li>
-<li><b>Infrastructure:</b> one checkpoint, LFS, empty requirements (torch/numpy already in the official image),
-validator run three times, deterministic argmax.</li>
+<li><b>Exit still not learned:</b> visible sign walls + exit aux head + Freedoom switches; coverage fallback.</li>
+<li><b>Door-frame deadlock:</b> door drills, USE edge penalty, PPO recovery; the teacher’s door state machine
+is the known weak point and is not used at inference.</li>
+<li><b>Colour overfit:</b> randomised wall/floor/light/door/exit textures + Freedoom held-out.</li>
+<li><b>Memory drift:</b> B+ heading is exact; translation measured before scan matching.</li>
+<li><b>Time:</b> A ships first; B+ is promoted only if it wins on held-out proxy score.</li>
 </ul>
+
+<h3>Reproduce</h3>
+<p class="small"><code>uv sync</code><br>
+<code>uv run python validate.py</code><br>
+<code>uv run python -m training.maps.prepare_freedoom</code><br>
+<code>uv run python -m training.collect --episodes 400 --source gen --no-doors --no-monsters</code><br>
+<code>uv run python -m training.bc --data training/data/demos_all --epochs 4</code><br>
+<code>uv run python -m training.evaluate --suite all</code></p>
 </div>
 </div>
 
@@ -170,26 +178,28 @@ validator run three times, deterministic argmax.</li>
 <div class="two">
 <div>
 <ul>
-<li>Built from <code>Reinforce-SST/devforge-doom-template</code>; <code>env/</code>, <code>validate.py</code> and the
-<code>DoomAgent</code> contract are untouched.</li>
-<li>No Dockerfile, no CI/CD, no network or engine access at inference; weights in <code>submission/weights/</code>
-via Git LFS; repository ≪ 1 GB.</li>
-<li>Every decision is a forward pass of trained parameters. The A*/teacher exists only in <code>training/</code> and is
-never imported by <code>submission/</code>.</li>
-<li>Deterministic: argmax heads, explicit recurrent state, no time-dependent code; the same input and seed give the
-same action sequence.</li>
+<li>Built from <code>Reinforce-SST/devforge-doom-template</code>; <code>env/</code>, <code>validate.py</code> and
+the <code>DoomAgent</code> contract are untouched; no Dockerfile; no CI/CD.</li>
+<li>Every decision is a forward pass of trained parameters. The teacher, A*, BFS and door-state code live only
+under <code>training/</code> and are never imported by <code>submission/</code>.</li>
+<li>Weights in <code>submission/weights/</code> via Git LFS; repository ≪ 1 GB; no data shards committed.</li>
+<li>Deterministic argmax; explicit recurrent state; no network, engine or disk access at inference.</li>
+<li>Validator: init 0.6 s (limit 60 s), p50 0.6 ms / p99 0.7 ms (limit 5 s), one dry-run episode clean.</li>
 </ul>
 </div>
 <div class="panel">
-<h3>Reproduce</h3>
-<p class="small"><code>git clone … &amp;&amp; uv sync</code><br>
-<code>uv run python validate.py</code><br>
-<code>uv run python -m training.collect --episodes 300 --source mix</code><br>
-<code>uv run python -m training.bc --data training/data/demos_nav --epochs 6</code><br>
-<code>uv run python -m training.evaluate --ckpt training/runs/bc_nav/ckpt.pt --suite all</code><br>
-<code>uv run python validate.py --map maps/generated/t3_s00000.wad:MAP01</code></p>
-<p class="small">All numbers in this brief are produced by the scripts in the repository; the tests, the validator and
-the proxy leaderboard are the source of truth.</p>
+<h3>Measured margins</h3>
+<table>
+<tr><th>Budget</th><th class="num">Limit</th><th class="num">Ours</th></tr>
+<tr><td>Init</td><td class="num">60 s</td><td class="num">0.6 s</td></tr>
+<tr><td>Per decision</td><td class="num">40 ms avg</td><td class="num">0.6 ms</td></tr>
+<tr><td>Any act()</td><td class="num">5 s</td><td class="num">0.7 ms</td></tr>
+<tr><td>RAM</td><td class="num">8 GB</td><td class="num">&lt; 1 GB</td></tr>
+<tr><td>VRAM</td><td class="num">2 GB</td><td class="num">&lt; 0.1 GB (CPU path)</td></tr>
+<tr><td>Repo</td><td class="num">1 GB</td><td class="num">&lt; 30 MB</td></tr>
+</table>
+<p class="small">Official scoring weights are hidden; the brief reports proxy components, never a claimed
+leaderboard score.</p>
 </div>
 </div>
 

@@ -31,6 +31,7 @@ from training.obs import flatten_obs, step_prev
 from training.splits import FREEDOOM_TRAIN, GEN_TRAIN, GEN_VAL
 from training.teacher.mapdata import SWITCH_EXITS
 from training.teacher.teacher import make_teacher
+from submission.mapmem import MapBuilder
 
 LOCK_TO_COLOUR = {2: 0, 3: 1, 1: 2}  # blue / yellow / red card channels
 EXIT_BINS = 12
@@ -57,6 +58,8 @@ def _blank(T: int) -> dict:
         "exit_dist": np.zeros(T, np.uint8),
         "key_colours": np.zeros((T, 6), np.uint8),
         "damage8": np.zeros(T, np.float16),
+        "map": np.zeros((T, 5, 32, 32), np.uint8),
+        "pose": np.zeros((T, 6), np.float16),
     }
 
 
@@ -126,10 +129,13 @@ def run_episode(wad: str, map_name: str, seed: int, max_steps: int = 1200,
     steps = 0
     kills0 = priv["kills"]
     prev_action, turn_held, use_last = None, 0, 0
+    builder = MapBuilder()
     health = []
     while steps < max_steps:
         action = teacher.act(obs, priv)
-        flat = flatten_obs(obs, prev_action, turn_held, use_last)
+        builder.update(obs, prev_action)
+        flat = flatten_obs(obs, prev_action, turn_held, use_last,
+                           map_crop=builder.crop(), pose=builder.pose())
         vis, bearing, dbin, kcols = _labels(teacher.md, teacher.grid, (priv["x"], priv["y"]),
                                            float(priv["angle"]), targets)
         buf["dist"][steps] = flat["rays_dist"]
@@ -140,6 +146,8 @@ def run_episode(wad: str, map_name: str, seed: int, max_steps: int = 1200,
         buf["vitals"][steps] = flat["vitals"]
         buf["rgb"][steps] = flat["rgb"]
         buf["prev"][steps] = flat["prev_action"]
+        buf["map"][steps] = flat["map"]
+        buf["pose"][steps] = flat["pose"]
         buf["action"][steps] = action
         buf["keys"][steps] = np.asarray(priv["keys"], np.uint8)
         buf["priv"][steps] = (priv["x"], priv["y"], priv["angle"],

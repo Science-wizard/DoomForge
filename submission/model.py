@@ -20,6 +20,7 @@ Heads:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import torch
@@ -33,6 +34,8 @@ NUM_ENTITY_TYPES = 12
 VITALS = 17
 RGB_H, RGB_W = 30, 40
 PREV = 12
+MAP_CH, MAP_H, MAP_W = 5, 32, 32
+POSE = 6
 HIDDEN = 384
 
 HEADS = (("move", 3), ("strafe", 3), ("turn", 3), ("attack", 2), ("use", 2), ("next", 2))
@@ -153,6 +156,31 @@ class RGBEncoder(nn.Module):
         return self.out(self.net(rgb))
 
 
+class MapEncoder(nn.Module):
+    """5x32x32 allocentric crop -> 128. Deterministic map, learned readout."""
+
+    def __init__(self, out: int = 128):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(MAP_CH, 32, 3, stride=2, padding=1), nn.GELU(),
+            nn.Conv2d(32, 64, 3, stride=2, padding=1), nn.GELU(),
+            nn.Conv2d(64, 64, 3, stride=2, padding=1), nn.GELU(),
+        )
+        self.out = nn.Sequential(nn.Flatten(), nn.Linear(64 * 4 * 4, out), nn.GELU())
+
+    def forward(self, m: torch.Tensor) -> torch.Tensor:
+        return self.out(self.net(m))
+
+
+class PoseEncoder(nn.Module):
+    def __init__(self, out: int = 32):
+        super().__init__()
+        self.net = nn.Sequential(nn.Linear(POSE, 32), nn.GELU(), nn.Linear(32, out), nn.GELU())
+
+    def forward(self, p: torch.Tensor) -> torch.Tensor:
+        return self.net(p)
+
+
 class PrevEncoder(nn.Module):
     def __init__(self, out: int = 32):
         super().__init__()
@@ -171,7 +199,9 @@ class DoomNet(nn.Module):
         self.vit = VitalsEncoder(64)
         self.rgb = RGBEncoder(128)
         self.prev = PrevEncoder(32)
-        self.fuse = nn.Sequential(nn.Linear(480, hidden), nn.GELU())
+        self.map = MapEncoder(128)
+        self.pose = PoseEncoder(32)
+        self.fuse = nn.Sequential(nn.Linear(640, hidden), nn.GELU())
         self.gru = nn.GRU(hidden, hidden, batch_first=True)
         self.trunk = nn.Sequential(nn.Linear(hidden, hidden), nn.GELU())
         self.actor = nn.Linear(hidden, sum(HEAD_SIZES))
@@ -180,12 +210,18 @@ class DoomNet(nn.Module):
 
     # ------------------------------------------------------------------ encoding
     def encode(self, obs: dict) -> torch.Tensor:
-        r = self.ray(obs["rays_dist"], obs["rays_hit"])
-        e = self.ent(obs["ent_feat"], obs["ent_type"], obs["ent_mask"])
-        v = self.vit(obs["vitals"])
-        g = self.rgb(obs["rgb"])
-        p = self.prev(obs["prev_action"])
-        return self.fuse(torch.cat([r, e, v, g, p], dim=-1))
+        lead = obs["rays_dist"].shape[:-1]
+        n = math.prod(lead) if lead else 1
+        r = self.ray(obs["rays_dist"].reshape(n, 64), obs["rays_hit"].reshape(n, 64))
+        e = self.ent(obs["ent_feat"].reshape(n, 32, 5), obs["ent_type"].reshape(n, 32),
+                     obs["ent_mask"].reshape(n, 32))
+        v = self.vit(obs["vitals"].reshape(n, 17))
+        g = self.rgb(obs["rgb"].reshape(n, 3, RGB_H, RGB_W))
+        p = self.prev(obs["prev_action"].reshape(n, PREV))
+        m = self.map(obs["map"].reshape(n, MAP_CH, MAP_H, MAP_W))
+        q = self.pose(obs["pose"].reshape(n, POSE))
+        z = self.fuse(torch.cat([r, e, v, g, p, m, q], dim=-1))
+        return z.reshape(*lead, -1) if lead else z
 
     def forward_seq(self, emb: torch.Tensor, h: torch.Tensor | None = None):
         y, h = self.gru(emb, h)

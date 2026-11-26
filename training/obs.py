@@ -6,6 +6,8 @@ import numpy as np
 
 RGB_H, RGB_W = 30, 40   # 120x160 pooled 4x for the colour encoder
 PREV = 12
+MAP_CH, MAP_H, MAP_W = 5, 32, 32
+POSE = 6
 
 
 def downsample_rgb(rgb) -> np.ndarray:
@@ -24,10 +26,11 @@ def prev_vector(prev_action=None, turn_held: int = 0, use_last: int = 0) -> np.n
     return p
 
 
-def flatten_obs(obs: dict, prev_action=None, turn_held: int = 0, use_last: int = 0) -> dict:
+def flatten_obs(obs: dict, prev_action=None, turn_held: int = 0, use_last: int = 0,
+                map_crop=None, pose=None) -> dict:
     rays = obs["rays"]
     ent = obs["visible_entities"]
-    return {
+    out = {
         "rays_dist": np.asarray(rays["distance"], dtype=np.float32),
         "rays_hit": np.asarray(rays["hit_type"], dtype=np.int64),
         "ent_feat": np.asarray(ent["features"], dtype=np.float32),
@@ -36,26 +39,27 @@ def flatten_obs(obs: dict, prev_action=None, turn_held: int = 0, use_last: int =
         "vitals": np.asarray(obs["vitals"], dtype=np.float32),
         "rgb": downsample_rgb(obs["rgb"]),
         "prev_action": prev_vector(prev_action, turn_held, use_last),
+        "map": np.zeros((MAP_CH, MAP_H, MAP_W), np.uint8) if map_crop is None else np.asarray(map_crop, np.uint8),
+        "pose": np.zeros(POSE, np.float32) if pose is None else np.asarray(pose, np.float32),
     }
+    return out
 
 
 def stack_obs(obs_list: list[dict], device="cpu") -> dict:
     import torch
 
     out = {}
-    for key in ("rays_dist", "rays_hit", "ent_feat", "ent_type", "ent_mask", "vitals", "prev_action"):
-        arr = np.stack([np.asarray(o[key]) for o in obs_list])
-        out[key] = torch.as_tensor(arr, device=device)
+    for key in ("rays_dist", "rays_hit", "ent_feat", "ent_type", "ent_mask", "vitals", "prev_action", "pose"):
+        out[key] = torch.as_tensor(np.stack([np.asarray(o[key]) for o in obs_list]), device=device)
     rgb = np.stack([np.asarray(o["rgb"], np.uint8) for o in obs_list])
     out["rgb"] = torch.as_tensor(rgb, device=device, dtype=torch.float32) / 255.0
+    mp = np.stack([np.asarray(o["map"], np.uint8) for o in obs_list])
+    out["map"] = torch.as_tensor(mp, device=device, dtype=torch.float32)
     return out
 
 
 def step_prev(action, prev_action, turn_held: int, use_last: int):
-    """Update the previous-action bookkeeping for the next observation.
-
-    Returns (prev_action, turn_held, use_last).
-    """
+    """Update the previous-action bookkeeping for the next observation."""
     a = np.asarray(action).astype(np.int8).ravel()
     tl, tr = int(a[4]), int(a[5])
     if tl and not tr:

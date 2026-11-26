@@ -1,13 +1,16 @@
-# Architecture Reference
+# Architecture Reference — Revision 2
 
-This is the technical reference for the submitted agent and the training system.
-The plan is in [`../PLAN.md`](../PLAN.md); the lab log is in [`../progress.md`](../progress.md).
+Plan of record: [`../PLAN.md`](../PLAN.md) (24-hour cut). Lab log: [`../progress.md`](../progress.md).
+
+This document describes **Baseline A** (the safety submission) and the deferred
+**B+ lite** memory extension. A is implemented; B+ is a roadmap until A clears its
+held-out gates.
 
 ---
 
 ## 1. Contract recap
 
-The scorer runs `submission/agent.py` in a sandbox with **no engine reference**:
+The scorer runs `submission/agent.py` with no engine reference:
 
 ```python
 class DoomAgent:
@@ -16,196 +19,179 @@ class DoomAgent:
     def act(self, observation: dict) -> np.ndarray  # int8[9] in {0,1}
 ```
 
-Observation:
-
-| Key | Shape | Meaning |
+| Observation | Shape | Notes |
 |---|---|---|
-| `rays.distance` | 64 float32 | hit distance / 1024 (1.0 = nothing) |
-| `rays.hit_type` | 64 int | 0 none, 1 wall, 2 door, 3 locked door, 4 enemy, 5 item |
-| `visible_entities.features` | 32×5 float32 | `[dist/1024, sin(rel), cos(rel), rel_vel_forward, rel_vel_right]` |
-| `visible_entities.entity_type` | 32 int | 0 pad, 1 melee, 2 hitscan, 3 projectile enemy, 4 projectile, 5 health, 6 armor, 7 ammo, 8 weapon, 9 key, 10 barrel, 11 other |
-| `visible_entities.mask` | 32 int8 | 1 = real entity |
-| `vitals` | 17 float32 | health, armor, weapon, ammo, four ammo pools, six key flags, three velocities |
-| `rgb`, `depth` | 120×160×3, 120×160 | optional |
+| `rays.distance` | 64 float32 | hit distance / 1024 |
+| `rays.hit_type` | 64 int | none/wall/door/locked door/enemy/item |
+| `visible_entities.features` | 32×5 | dist, sin, cos, relative velocity |
+| `visible_entities.entity_type` | 32 int | enemies, items, keys, barrels |
+| `visible_entities.mask` | 32 int8 | validity |
+| `vitals` | 17 | health, armour, weapon, ammo, six key flags, velocity |
+| `rgb` / `depth` | 120×160×3 / 120×160 | pixels |
 
-Action: 9 binary buttons, held for 4 game tics.
+**Verified gaps (Revision 2):**
 
----
-
-## 2. Inference data flow
-
-```
-observation dict
-   │
-   ├─ rays ──────────► RayEncoder (circular Conv1d ×3) ──► 128 ─┐
-   ├─ entities ──────► EntityEncoder (embed + MHA + pool) ─► 128 ─┤
-   └─ vitals ────────► VitalsEncoder (MLP) ──────────────►  64 ─┤
-                                                                ├─ concat 320
-                                                                ▼
-                                                         GRU(320) → h_t
-                                                                │
-                                              ┌─────────────────┼──────────────────┐
-                                              ▼                 ▼                  ▼
-                                        actor heads         value head        aux heads
-                                   move/strafe/turn/…        V(s)         keys, enemy, door
-                                              │
-                                              ▼
-                                   argmax each head → 9-bit action
-```
-
-The GRU state `h_t` persists across `act()` calls and is zeroed in `reset()`.
-
-### Why not pixels by default?
-
-Pixels cost CPU time on a single thread and the raycast stream already contains
-metric free-space information, door/lock types and entity hits. Depth and RGB are
-kept as optional ablations; the final model uses whichever wins on the proxy
-leaderboard per millisecond.
+- Exit is **not** a ray hit type or entity class. The agent must learn exits from
+  RGB; training labels come from privileged exit linedefs.
+- Key and lock **colour** is hidden until pickup. The agent learns colour from RGB.
+- `USE` fires on button-down and reverses a moving door. Never spam it.
+- Turn rate is stateful; the agent receives `turn_held` and `prev_action`.
 
 ---
 
-## 3. Action factorisation
-
-`MultiBinary(9)` has 512 combinations; many are contradictory. We factorise:
-
-```python
-HEADS = (("move", 3), ("strafe", 3), ("turn", 3), ("attack", 2), ("use", 2), ("next", 2))
-```
-
-The model emits 15 logits. The vector is reconstructed exactly:
+## 2. Baseline A
 
 ```
-move=1 → MOVE_FORWARD     strafe=1 → MOVE_LEFT      turn=1 → TURN_LEFT
-move=2 → MOVE_BACKWARD    strafe=2 → MOVE_RIGHT     turn=2 → TURN_RIGHT
-attack/use/next are binary.
+rays 64 ─► circular Conv1d ×3 ─────────────────────────────► 128 ─┐
+entities ≤32 ─► type embed + MHA + masked mean/max ─────────► 128 ─┤
+vitals 17 ─► MLP ───────────────────────────────────────────►  64 ─┤
+RGB 30×40×3 ─► Conv2d ×3 (stride 2) ────────────────────────► 128 ─┤
+prev action 12 ─► MLP ─────────────────────────────────────►  32 ─┤
+                                                                  ├─ concat 480
+                                                                  ▼
+                                                           GRU(384) → 384
+                                                                  │
+                        ┌─────────────────┬───────────────────────┼──────────────────┐
+                        ▼                 ▼                       ▼                  ▼
+                  action heads         value                 aux heads          (no map)
+              move/strafe/turn/…       V(s)        keys, enemy, door, exit visible,
+                                                   exit bearing 13, exit dist 6,
+                                                   key colours 6, damage-next-8
 ```
 
-This is action masking by construction, allowed by the rules (“action masking from
-observation fields” and learned heads are explicitly permitted).
+- **1.56 M parameters.** Measured **0.45 ms** per decision on one CPU thread
+  (fully loaded agent p50 0.6 ms in the validator). The 40 ms budget is not a risk.
+- Factorised heads: `move(3) × strafe(3) × turn(3) × attack(2) × use(2) × next(2)`.
+  No contradictory buttons; 15 logits instead of 512.
+- RGB is pooled 4× to 30×40 to keep colour while costing 3.6 KB/frame. The CNN sees
+  exit signs, blue/red/yellow doors and coloured key pickups.
+- Auxiliary heads are trained from privileged labels and are **not used for acting**;
+  they shape the shared encoder so the GRU state carries exit/lock/threat information.
+- `reset()` clears the GRU state, previous action, `turn_held` and `use_last`.
+
+### Auxiliary labels (training only)
+
+| Label | Source |
+|---|---|
+| keys held (6) | `vitals[8:14]` |
+| enemy visible | entity types 1–3 with mask |
+| door ahead | ray 0 hit type 2/3 |
+| exit visible | exit linedef in FOV ±55° and grid line-of-sight |
+| exit bearing (13 classes) | relative angle bin, class 12 = not visible |
+| exit distance (6 bins) | 256/512/768/1024/1400-unit bins |
+| key colours (6) | key thing in FOV and line-of-sight, colour from map metadata |
+| damage next 8 | `max(0, health[t] − health[t+8]) / 100` |
 
 ---
 
-## 4. Model sizes and budgets
+## 3. B+ lite (deferred until A ships)
 
-| Component | Params |
-|---|---:|
-| Ray encoder | ~75 k |
-| Entity encoder | ~110 k |
-| Vitals encoder | ~5 k |
-| Fusion + GRU | ~1.0 M |
-| Heads | ~5 k |
-| **Total** | **~1.2 M** |
+The GRU is a short-horizon memory. Keys and locked doors require hundreds of steps.
+B+ adds **perception memory**, not planning:
 
-Measured targets: 1–3 ms per decision on one CPU thread; 2 GB VRAM is far above the
-fp32 checkpoint (~5 MB) and activations. The 40 ms/decision average budget leaves a
->10× margin.
+- **Pose:** exact heading integration from the measured turn table (`turn_held` +
+  warm-up state) and translation from `vitals[14:16]`; optional translation-only scan
+  match against the wall channel (±16 units, ~81 candidates, <0.5 ms).
+- **Map:** 64 units/cell, 96×96 (6,144 units). Channels: free, wall, door, locked
+  door, visited, recency, frontier, item, enemy decay, exit likelihood, opened.
+- **Write:** project rays and entity positions at the estimated pose. Deterministic
+  perception; no search or planning.
+- **Read:** two 32×32 egocentric crops (64 and 128 units/cell), rotated to heading,
+  through a small CNN → 256.
+- **Event tokens:** ≤64 tokens for locked doors, keys, exit cues and frontier
+  clusters. 24 features; relative fields recomputed from pose every step; attention
+  query from the GRU state → 128. This is the long-horizon fix and the live-demo
+  attention overlay.
+- **Optional learned write:** 4 channels projected from the GRU state at the agent's
+  cell; keep only if an ablation wins.
+
+**Causal tests:** memory wipe after key pickup; locked-door recall rate; attention
+spike on the remembered door when the key flag flips; drift curves.
+
+**Rule check:** deterministic map writing is preprocessing/encoding; the policy still
+chooses actions. No A*/BFS/Dijkstra in `submission/`. Ask the organisers for a written
+yes before submission.
 
 ---
 
-## 5. Training system
+## 4. Training system
 
 ```
-maps/  ──►  Teacher (privileged)  ──►  demonstrations (npz)
-                                              │
-                                              ▼
-                                         Behaviour cloning
-                                              │
-                                              ▼
-                              PPO fine-tune on generated curriculum
-                                              │
-                                              ▼
-                              proxy leaderboard → best checkpoint
-                                              │
-                                              ▼
-                                   submission/weights/*.pt
+generated + Freedoom maps
+        │
+        ├─ privileged teacher (A*, doors, exits, combat)  ──► demonstrations
+        │                                                   (rays, entities,
+        │                                                    vitals, RGB, prev,
+        │                                                    actions, aux labels)
+        ▼
+  behaviour cloning  ──►  PPO fine-tune  ──►  proxy leaderboard  ──►  weights
 ```
 
-### Teacher (training only)
+### Teacher
 
-`training/teacher/`
-
-- **MapData** parses Doom binary and UDMF: linedefs, front/back sectors, specials,
-  things, keys, exit lines.
-- **NavGrid** rasterises blocking linedefs at 16 units; marks door cells with lock
-  metadata and passage direction; A* with door costs; line-of-sight; distance fields.
-- **Teacher** sequences objectives (exit → key → locked door), follows a carrot path,
-  uses doors with an explicit state machine, fights with circle-strafing and
-  backpedalling, and handles switch vs walk-over exits.
-
-The teacher is *not* imported by `submission/`. It uses `env.privileged_state()`,
-which the scorer keeps private.
+`training/teacher/`: map parser (binary + UDMF), 16-unit navigation grid, A* with
+door costs, door state machine, switch/walk-over exits, circle-strafing combat.
+Used only for data; never imported by `submission/`.
 
 ### Maps
 
-- `training/maps/gen_wad.py`: BSP room generator, four tiers, node-less Doom binary,
-  1-tile isolated doors, keycard/locked-door progression, arena pillars, monsters,
-  ammo/health, walk-over exits.
-- `training/maps/drills.py`: 1-tile corridors with isolated doors and an optional key
-  alcove — the clean signal for the door/key skill.
-- `training/maps/prepare_freedoom.py`: 32 real Freedoom maps in three variants
-  (raw / doors-open / doors-open+no-monsters).
+- `training/maps/gen_wad.py`: BSP rooms, 1-tile isolated doors, coloured locks,
+  visible exit sign wall, arena cover, four tiers. Node-less Doom binary (required
+  for things to spawn). Deterministic from `(seed, tier)`.
+- `training/maps/drills.py`: 1-tile corridors with isolated doors and key alcove.
+- `training/maps/prepare_freedoom.py`: 32 maps × raw / doors-open / doors-open+no-
+  monsters.
 
-### Behaviour cloning
+### Splits
 
-- Episodes padded into `(B, T, …)` sequences; GRU runs over the full episode.
-- Loss = cross-entropy on six heads + 0.2 × auxiliary BCE + 0.5 × value MSE.
-- Auxiliary labels are self-supervised from the observation: six key flags,
-  “enemy visible”, “door ahead” (ray 0 hit type 2/3).
-- Episode-level train/val split; the validation metric is *environment* exit rate, not
-  just loss.
+`training/splits.py`: Freedoom MAP01–22 train, MAP23–32 held out; generated seeds
+0–9,999 train, 10,000–10,999 validation, 20,000+ OOD. The collector and evaluator read
+the same file.
 
-### PPO
+### Reward (PPO, proxy)
 
-- Clipped surrogate (0.2), GAE(0.95), entropy bonus, advantage normalisation.
-- Reward (training only): exit +10, death −5, kill +0.6, damage −0.02/hp, key +2,
-  door +0.4, locked door +1, new nav cell +0.01, distance-to-objective penalty
-  −0.0002 × BFS cells.
-- Curriculum: drills → tier 2 → tier 2–3 with monsters → full tier 2–4 + Freedoom.
+Exit +10, key +3, lock +3, door +0.5, new sector +0.3, new cell +0.01 capped, kill
++0.6, damage −0.01/HP, death `−(3(1−t/T)+1)`, wasted shot −0.003, useless USE
+−0.005, time −0.001, potential-based objective shaping. Exact scorer weights are
+hidden; every component is reported separately.
 
 ---
 
-## 6. Determinism & safety at inference
+## 5. Evaluation
 
-- `argmax` heads, no sampling, no dropout, no batch norm.
-- All state is explicit (`h_t`); `reset()` clears it.
-- No file writes, no network, no engine access, no `sys.path` tricks.
-- Weights are loaded once in `__init__` from `Path(__file__).parent / "weights"`.
-- `torch.set_num_threads(1)` to respect the one-CPU limit.
-- Any exception is a zero for that map, so the runtime is deliberately small and
-  defensive: shape checks, `np.nan_to_num`, and a fallback zero action only if the
-  observation is malformed.
+`training/evaluate.py` runs the real environment and reports: exit, keys, locks,
+doors, unique sectors (`SectorTracker`), kills, damage, survival, steps, proxy score,
+p50/p99 latency. Suites: `gen_val`, `freedoom_eval` (MAP23–32), `ood`, `all`.
+
+`training/coverage.py` maps the player position to a sector via the wrapper's
+`sector_polygons()` and counts unique sectors.
 
 ---
 
-## 7. Neural Cartographer (Phase 3)
+## 6. Runtime and safety
 
-The GRU is a short-horizon memory. Keys and locked doors require long-horizon
-backtracking, so Phase 3 adds an explicit allocentric map:
-
-- Pose from action + velocity, with a learned residual supervised by privileged deltas.
-- `M ∈ R^{8×48×48}` at 128 units/cell; warp by `grid_sample`, write the polar ray scan,
-  update with a small ConvGRU.
-- Read 32 relative probes + global pooling.
-- Auxiliary losses: visited mask, next-scan prediction, relative door/key/exit labels.
-
-Ablation plan: GRU only → + visited mask → + learned map. Keep the map only if it
-improves tier-3 exit rate per millisecond.
+- Loads one fp32 checkpoint (~6 MB) from `submission/weights/` in `__init__`.
+- `torch.set_num_threads(1)`; `torch.inference_mode()`; 3 dummy forwards warm-up.
+- Argmax by default; deterministic. No dropout, no batch norm.
+- Sanitises NaN/inf; on any failure returns a valid zero action and logs once.
+- No network, no engine, no disk writes, no imports from `training/`.
 
 ---
 
-## 8. Module map
+## 7. Module map
 
 | Path | Role |
 |---|---|
 | `submission/agent.py` | evaluation entry point |
-| `submission/model.py` | network definition (single source of truth) |
-| `submission/weights/` | Git LFS checkpoint |
-| `training/model.py` | re-export of the submission model |
-| `training/obs.py` | observation flattening/stacking |
-| `training/collect.py` | expert demonstration shards |
-| `training/bc.py` | behaviour cloning |
-| `training/ppo.py` | RL fine-tuning |
-| `training/evaluate.py` | proxy leaderboard, replays |
+| `submission/model.py` | Baseline A network (single source of truth) |
+| `submission/weights/doomforge.pt` | Git LFS checkpoint |
+| `training/obs.py` | observation flattening, RGB pooling, prev-action vector |
+| `training/collect.py` | demonstrations + privileged labels |
+| `training/bc.py` | behaviour cloning (windowed episodes) |
+| `training/ppo.py` | RL fine-tune (scaffold) |
+| `training/evaluate.py` | proxy leaderboard / replays |
+| `training/coverage.py` | sector coverage |
+| `training/splits.py` | frozen data splits |
 | `training/maps/` | generator, drills, Freedoom prep |
-| `training/teacher/` | privileged expert (never imported at inference) |
+| `training/teacher/` | privileged expert (training only) |
 | `validate.py` | official validator (untouched) |

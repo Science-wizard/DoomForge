@@ -80,6 +80,76 @@ below as evidence, but the status table here is authoritative.
 
 ---
 
+## Phase 1 result: Baseline A is not Markovian enough — pivot to B+ minimal
+
+### What happened
+
+Baseline A (rays + entities + vitals + RGB + previous action, no map) was trained with
+behaviour cloning on 100,921 transitions (400 door-free navigation episodes, 150 arena
+episodes, 2 Freedoom episodes).
+
+| Metric | Result |
+|---|---|
+| BC loss (epoch 0 → 3) | 6.21 → 1.89 |
+| Teacher-forced move accuracy | 85.6% |
+| Teacher-forced strafe accuracy | 76.0% |
+| Teacher-forced **turn** accuracy | **43.2%** (chance 33%) |
+| Teacher-forced attack accuracy | 92.4% |
+| Exact six-head match | 20.8% |
+| Held-out exit rate | **0/4** |
+| Typical behaviour | forward + turn-left; circles in the start room |
+
+### Diagnosis
+
+The teacher's turn action is computed from a **global A* waypoint**. From a single
+observation the agent cannot know where that waypoint is; the mapping from observation
+to turn is not a function. Move/strafe/attack are learnable because they are local;
+turn is not. More BC epochs did not help (CE plateaued at ~1.9, turn accuracy stayed at
+chance). This is the partial-observability failure the review predicted, but it bites
+Baseline A even on door-free maps, not only on keys/doors.
+
+### Decision (Revision 2 §5.7 promotion rule)
+
+Promote a **minimal B+** now instead of waiting for A to clear a gate it cannot clear:
+
+- deterministic `MapBuilder` (`submission/mapmem.py`): heading from the measured turn
+  table, translation from ego velocity, rays and entity sightings projected into a
+  64×64 allocentric grid at 96 units/cell; 5 channels (visited, wall, door, locked,
+  item/key);
+- a 32×32 crop + a 6-value pose vector fed to a small CNN/MLP;
+- no planning, no privileged state, no engine access. The map is perception.
+
+The map makes the teacher's global waypoint **observable** (relative to the visited
+layout), so turn becomes learnable. It also directly serves the key→locked-door
+return requirement.
+
+### Updated model
+
+| Item | Value |
+|---|---|
+| Parameters | 1.807 M |
+| Inputs | rays, entities, vitals, RGB, prev action, 5×32×32 map crop, 6-value pose |
+| Validator latency | p50 0.8 ms, p99 1.0 ms (limit 5 s) |
+| Init | 0.4–0.6 s (limit 60 s) |
+
+### Next experiment
+
+1. BC with maps on the same 100,921 transitions. Measure teacher-forced turn accuracy
+   and held-out exit rate. Success = turn accuracy > 70% and exit rate > 50% on
+   door-free validation maps.
+2. If the exit rate is still low, run DAgger (`training/dagger.py`) with the map-aware
+   student and A* teacher labels; this is the planned covariate-shift fix.
+3. If the map-aware BC clears the gate, run the full evaluation (`gen_val`,
+   `freedoom_eval`) and promote the checkpoint; then PPO for doors/combat.
+
+### Honest risk
+
+The map is coarse (96 units/cell) and the pose integration uses a constant 14.06° turn
+instead of the full table; drift may limit long episodes. If so, the next fix is the
+measured table + translation-only scan matching (already specified in PLAN.md §4.2).
+
+---
+
 ## Historical Phase 0/1 log (pre-Revision 2)
 
 ### Environment

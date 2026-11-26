@@ -42,8 +42,45 @@ def load_episodes(data_dir: str | Path, min_steps: int = 8) -> list[dict]:
             continue
         ep["meta"] = row
         ep["heads"] = np.stack([np.array(vector_to_actions(a), np.int64) for a in ep["action"]])
+        if "map" not in ep:
+            from submission.mapmem import MapBuilder
+            n = len(ep["action"])
+            builder = MapBuilder()
+            maps = np.zeros((n, 5, 32, 32), np.uint8)
+            poses = np.zeros((n, 6), np.float32)
+            prev = None
+            execs = ep["exec"] if "exec" in ep else ep["action"]
+            for t in range(n):
+                obs = {"rays": {"distance": ep["dist"][t], "hit_type": ep["hit"][t]},
+                       "visible_entities": {"features": ep["efeat"][t], "entity_type": ep["etype"][t],
+                                            "mask": ep["emask"][t]},
+                       "vitals": ep["vitals"][t]}
+                builder.update(obs, prev)
+                maps[t] = builder.crop()
+                poses[t] = builder.pose()
+                prev = execs[t]
+            ep["map"] = maps
+            ep["pose"] = poses
         eps.append(ep)
     return eps
+
+
+def window_episodes(eps: list[dict], window: int = 128, stride: int = 64) -> list[dict]:
+    """Split long episodes into overlapping windows so BC batches stay small."""
+    if window <= 0:
+        return eps
+    out = []
+    for ep in eps:
+        n = len(ep["action"])
+        for start in range(0, max(1, n), stride):
+            end = min(n, start + window)
+            if end - start < 8:
+                continue
+            w = {k: v[start:end] for k, v in ep.items()
+                 if isinstance(v, np.ndarray) and len(v) == n}
+            w["meta"] = ep["meta"]
+            out.append(w)
+    return out
 
 
 def collate(batch: list[dict], device: str) -> dict:
@@ -57,7 +94,9 @@ def collate(batch: list[dict], device: str) -> dict:
         "ent_mask": torch.zeros(B, T, 32),
         "vitals": torch.zeros(B, T, 17),
         "rgb": torch.zeros(B, T, 3, 30, 40),
-        "prev": torch.zeros(B, T, 12),
+        "prev_action": torch.zeros(B, T, 12),
+        "map": torch.zeros(B, T, 5, 32, 32),
+        "pose": torch.zeros(B, T, 6),
         "heads": torch.zeros(B, T, 6, dtype=torch.long),
         "keys": torch.zeros(B, T, 6),
         "aux": torch.zeros(B, T, 35),
@@ -75,7 +114,9 @@ def collate(batch: list[dict], device: str) -> dict:
         out["ent_mask"][i, :n] = torch.from_numpy(ep["emask"].astype(np.float32))
         out["vitals"][i, :n] = torch.from_numpy(ep["vitals"].astype(np.float32))
         out["rgb"][i, :n] = torch.from_numpy(ep["rgb"].astype(np.float32)) / 255.0
-        out["prev"][i, :n] = torch.from_numpy(ep["prev"].astype(np.float32))
+        out["prev_action"][i, :n] = torch.from_numpy(ep["prev"].astype(np.float32))
+        out["map"][i, :n] = torch.from_numpy(ep["map"].astype(np.float32))
+        out["pose"][i, :n] = torch.from_numpy(ep["pose"].astype(np.float32))
         out["heads"][i, :n] = torch.from_numpy(ep["heads"])
         out["keys"][i, :n] = torch.from_numpy(ep["keys"].astype(np.float32))
         out["reward"][i, :n] = torch.from_numpy(ep["reward"].astype(np.float32))
@@ -107,7 +148,7 @@ def collate(batch: list[dict], device: str) -> dict:
 
 def batch_loss(net: DoomNet, batch: dict) -> tuple[torch.Tensor, dict]:
     emb = net.encode({k: batch[k] for k in
-                      ("rays_dist", "rays_hit", "ent_feat", "ent_type", "ent_mask", "vitals", "rgb", "prev")})
+                      ("rays_dist", "rays_hit", "ent_feat", "ent_type", "ent_mask", "vitals", "rgb", "prev_action", "map", "pose")})
     logits, value, aux, _ = net.forward_seq(emb)
     m = batch["mask"]
     denom = m.sum().clamp(min=1.0)
@@ -122,7 +163,7 @@ def batch_loss(net: DoomNet, batch: dict) -> tuple[torch.Tensor, dict]:
         b = F.binary_cross_entropy_with_logits(
             logit, target, reduction="none",
             pos_weight=torch.tensor(pos_weight, device=target.device))
-        if b.ndim > 1:
+        if b.ndim > 2:
             b = b.mean(-1)
         return (b * m).sum() / denom
 
@@ -172,12 +213,14 @@ def main() -> None:
     ap.add_argument("--val-frac", type=float, default=0.08)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--resume", default="")
+    ap.add_argument("--window", type=int, default=128)
+    ap.add_argument("--stride", type=int, default=64)
     args = ap.parse_args()
 
     device = args.device
     if device == "auto":
         device = "mps" if torch.backends.mps.is_available() else "cpu"
-    eps = load_episodes(args.data)
+    eps = window_episodes(load_episodes(args.data), args.window, args.stride)
     if not eps:
         raise SystemExit(f"no episodes in {args.data}")
     rng = np.random.default_rng(0)
@@ -197,20 +240,23 @@ def main() -> None:
     steps_per_epoch = math.ceil(len(train) / args.batch)
     for epoch in range(args.epochs):
         t0 = time.time()
-        order = rng.permutation(len(train))
-        totals = {"ce": 0.0, "aux": 0.0, "value": 0.0, "loss": 0.0, "exit": 0.0}
+        by_len = sorted(range(len(train)), key=lambda i: len(train[i]["action"]))
+        chunks = [by_len[i:i + args.batch] for i in range(0, len(by_len), args.batch)]
+        order_chunks = rng.permutation(len(chunks))
+        totals = {"ce": 0.0, "aux": 0.0, "value": 0.0, "loss": 0.0, "exit": 0.0, "bear": 0.0}
         n = 0
         for b in range(steps_per_epoch):
-            idx = order[b * args.batch:(b + 1) * args.batch]
+            idx = chunks[order_chunks[b]]
             batch = collate([train[i] for i in idx], device)
             loss, parts = batch_loss(net, batch)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
             opt.step()
-            totals["loss"] += float(loss)
+            totals["loss"] += float(loss.detach())
             for k, v in parts.items():
-                totals[k] += float(v)
+                if k in totals:
+                    totals[k] += float(v)
             n += 1
             if (b + 1) % 10 == 0:
                 print(f"  epoch {epoch} {b + 1}/{steps_per_epoch} "
@@ -232,6 +278,11 @@ def main() -> None:
                     "epoch": epoch, "val_loss": val_loss, "metrics": metrics}, out / "ckpt.pt")
         torch.save({"model": net.state_dict(), "config": {"hidden": net.hidden}},
                    out / f"ckpt_e{epoch}.pt")
+        row = {"epoch": epoch, "loss": totals["loss"] / n, "ce": totals["ce"] / n,
+               "aux": totals["aux"] / n, "value": totals["value"] / n,
+               "val_loss": val_loss, **metrics, "seconds": time.time() - t0}
+        with (out / "metrics.jsonl").open("a") as f:
+            f.write(json.dumps(row) + "\n")
         print(f"epoch {epoch} done in {time.time() - t0:.0f}s train={totals['loss'] / n:.3f} "
               f"val={val_loss if val_loss is None else round(val_loss, 3)} eval={metrics}", flush=True)
     print("saved", out / "ckpt.pt")

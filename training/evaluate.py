@@ -21,6 +21,7 @@ from submission.model import DoomNet
 from training.coverage import SectorTracker
 from training.maps.gen_wad import generate_map
 from training.obs import flatten_obs, stack_obs, step_prev
+from submission.mapmem import MapBuilder
 from training.splits import FREEDOOM_EVAL
 
 DEFAULT_WEIGHTS = {
@@ -45,16 +46,20 @@ class Runner:
         self.prev = None
         self.turn_held = 0
         self.use_last = 0
+        self.map = MapBuilder()
 
     def reset(self) -> None:
         self.h = None
         self.prev = None
         self.turn_held = 0
         self.use_last = 0
+        self.map.reset()
 
     @torch.no_grad()
     def act(self, obs: dict) -> np.ndarray:
-        flat = flatten_obs(obs, self.prev, self.turn_held, self.use_last)
+        self.map.update(obs, self.prev)
+        flat = flatten_obs(obs, self.prev, self.turn_held, self.use_last,
+                           map_crop=self.map.crop(), pose=self.map.pose())
         batch = stack_obs([flat], self.device)
         logits, value, aux, self.h = self.net.forward_step(batch, self.h)
         heads = self.net.flat_action(logits, sample=False)
