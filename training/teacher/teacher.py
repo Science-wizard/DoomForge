@@ -186,6 +186,29 @@ class Teacher:
         self.use_cool = max(0, self.use_cool - 1)
         self.grid.update_doors(np.asarray(priv["sector_floor"]), np.asarray(priv["sector_ceiling"]))
 
+        # Local door reflex: a ray hit on a door means the door is closed (open doors
+        # let rays pass).  Press USE once when close, then wait; never bounce it.
+        rays = obs.get("rays", {})
+        if rays:
+            d0 = np.asarray(rays["distance"])
+            h0 = np.asarray(rays["hit_type"])
+            ht0 = int(h0[0])
+            keys_held = np.asarray(priv["keys"], np.float32)
+            if ht0 == 2 and float(d0[0]) < 0.10:
+                if self.use_cool == 0:
+                    a[7] = 1
+                    self.use_cool = 30
+                    self.stats.doors_used += 1
+                self.last_use = int(a[7])
+                return a
+            if ht0 == 3 and float(d0[0]) < 0.10 and float(keys_held.sum()) > 0:
+                if self.use_cool == 0:
+                    a[7] = 1
+                    self.use_cool = 30
+                    self.stats.doors_used += 1
+                self.last_use = int(a[7])
+                return a
+
         if self.step - self.progress_t > 30:
             moved = math.hypot(pos[0] - self.progress_pos[0], pos[1] - self.progress_pos[1])
             if moved < 12:
