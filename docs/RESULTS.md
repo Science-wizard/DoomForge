@@ -303,3 +303,12 @@ validator now exits its dry-run map in 195 steps.
 
 Remaining gaps: C4 (room-wall doors), C7 (exploration), C9–C13 (ambush,
 resource, gauntlet, Freedoom transfer, OOD).
+
+### Additional C4/C7 attempts (not promoted)
+
+- C4 specialist with 550 room-door demos (392 exits): 1/5 val — no gain.
+- C7 specialist with 300 teacher demos (165 exits): 0/5 val.
+- KL-anchored PPO on C7 (40 updates, β=0.1): training return 8.1, 0/5 argmax.
+- Full-grid frontier BFS with door USE: 0/5 C7.
+- Teacher door reflex fixed (center rays, path-gated): C7 teacher 6/10, still
+  short of reliable labels; C9/C10/C12 teacher remains 0/3.

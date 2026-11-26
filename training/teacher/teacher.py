@@ -202,19 +202,15 @@ class Teacher:
         # Local door reflex: a ray hit on a door means the door is closed (open doors
         # let rays pass).  Press USE once when close, then wait; never bounce it.
         rays = obs.get("rays", {})
-        if rays:
+        if rays and self.path:
             d0 = np.asarray(rays["distance"])
             h0 = np.asarray(rays["hit_type"])
-            ht0 = int(h0[0])
             keys_held = np.asarray(priv["keys"], np.float32)
-            if ht0 == 2 and float(d0[0]) < 0.10:
-                if self.use_cool == 0:
-                    a[7] = 1
-                    self.use_cool = 30
-                    self.stats.doors_used += 1
-                self.last_use = int(a[7])
-                return a
-            if ht0 == 3 and float(d0[0]) < 0.10 and float(keys_held.sum()) > 0:
+            hc = h0[28:36]
+            dc = d0[28:36]
+            door_hit = (hc == 2) & (dc < 0.12)
+            lock_hit = (hc == 3) & (dc < 0.12) & (float(keys_held.sum()) > 0)
+            if door_hit.any() or lock_hit.any():
                 if self.use_cool == 0:
                     a[7] = 1
                     self.use_cool = 30

@@ -15,8 +15,11 @@ from pathlib import Path
 class SuiteSampler:
     def __init__(self, manifest: str | Path = "training/data/suite/train/manifest.jsonl",
                  config: str | Path = "training/suite/configs/ladder.json",
-                 seed: int = 0, suite_prob: float = 0.6):
+                 seed: int = 0, suite_prob: float = 0.6,
+                 categories: list[str] | None = None):
         self.rows = [json.loads(l) for l in Path(manifest).read_text().splitlines() if l.strip()]
+        if categories:
+            self.rows = [r for r in self.rows if r["category"] in categories]
         self.by_cat: dict[str, list[dict]] = {}
         for r in self.rows:
             self.by_cat.setdefault(r["category"], []).append(r)

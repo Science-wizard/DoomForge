@@ -50,11 +50,13 @@ WINDOW = 32
 
 # --------------------------------------------------------------------------- maps
 class Sampler:
-    def __init__(self, seed: int = 0, suite: bool = False):
+    def __init__(self, seed: int = 0, suite: bool = False, suite_categories: str = "",
+                 suite_prob: float = 0.6):
         self.rng = np.random.default_rng(seed)
         self.out = Path("training/data/ppo_maps")
         self.freedoom = [Path(f"maps/freedoom/{m}.wad") for m in FREEDOOM_TRAIN]
-        self.suite = SuiteSampler(seed=seed) if suite else None
+        cats = [c for c in suite_categories.split(",") if c] or None
+        self.suite = SuiteSampler(seed=seed, categories=cats, suite_prob=suite_prob) if suite else None
 
     def sample(self, progress: float) -> tuple[str, str, int]:
         if progress < 0.20:
@@ -227,6 +229,10 @@ def main() -> None:
     ap.add_argument("--suite", action="store_true")
     ap.add_argument("--freeze-goal", action="store_true")
     ap.add_argument("--lr", type=float, default=LR)
+    ap.add_argument("--suite-categories", default="")
+    ap.add_argument("--suite-prob", type=float, default=0.6)
+    ap.add_argument("--kl-anchor", default="")
+    ap.add_argument("--kl-beta", type=float, default=0.05)
     ap.add_argument("--episode-cap", type=int, default=0)
     args = ap.parse_args()
 
@@ -239,8 +245,14 @@ def main() -> None:
         for p in net.goal_head.parameters():
             p.requires_grad_(False)
         print("goal head frozen")
+    anchor = None
+    if args.kl_anchor:
+        from training.evaluate import load_net
+        anchor = load_net(args.kl_anchor, args.device)
+        print("KL anchor", args.kl_anchor)
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
-    sampler = Sampler(0, suite=args.suite)
+    sampler = Sampler(0, suite=args.suite, suite_categories=args.suite_categories,
+                      suite_prob=args.suite_prob)
     slots = [Slot(sampler) for _ in range(args.n_envs)]
     for s in slots:
         s.cap = args.episode_cap
@@ -272,7 +284,8 @@ def main() -> None:
             buf["act"].append(heads.cpu())
             buf["logp"].append(torch.as_tensor(logp))
             buf["val"].append(torch.as_tensor(vals))
-            buf["h"].append(torch.stack([hh[0] if hh is not None else torch.zeros(1, net.hidden) for hh in h]))
+            buf["h"].append(torch.stack([hh[0] if hh is not None else
+                                         torch.zeros(1, net.hidden, device=args.device) for hh in h]))
             rew, dones = [], []
             for i, s in enumerate(slots):
                 a = actions
@@ -338,6 +351,16 @@ def main() -> None:
                     pi_loss = -torch.min(s1, s2).mean()
                     v_loss = F.mse_loss(value[..., 0], ret_w)
                     loss = pi_loss + 0.5 * v_loss - 0.01 * ent.mean()
+                    if anchor is not None and args.kl_beta > 0:
+                        with torch.no_grad():
+                            a_emb = anchor.encode({k: v for k, v in obs_win.items()})
+                            a_logits, _, _, _ = anchor.forward_seq(a_emb, None)
+                        kl = 0.0
+                        for cur, ref in zip(torch.split(logits, HEAD_SIZES, dim=-1),
+                                            torch.split(a_logits, HEAD_SIZES, dim=-1)):
+                            kl = kl + F.kl_div(F.log_softmax(cur, -1), F.softmax(ref, -1),
+                                               reduction="batchmean")
+                        loss = loss + args.kl_beta * kl
                     losses.append(loss)
                 if not losses:
                     continue

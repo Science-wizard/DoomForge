@@ -575,3 +575,24 @@ Remaining: C4 room doors (0% val / 60% test), C7 exploration, C9–C13 combat/
 resource/transfer/OOD. The teacher fails these 0/3, so the next step is a
 stronger combat/exploration teacher or PPO on the existing arena data, not more
 of the same labels.
+
+### Remaining-gap push (post-Phase 4)
+
+- **C4**: collected 400 more room-door demos (392 exits) and trained a 550-episode
+  specialist (BC v9). Val C4 1/5 — no better than the generalist. The room-door
+  skill is not the bottleneck; finding the door from a random pose is.
+- **C7**: fixed the teacher's door reflex to inspect the center rays and only
+  fire once a path exists. Teacher C7 success rose from 2/6 to 6/10. Collected
+  300 demos (165 exits) and trained BC v10; val C7 0/5. A KL-anchored PPO
+  fine-tune on C7 (40 updates, β=0.1) reached training return 8.1 but 0/5
+  argmax exits. A pure full-grid frontier planner (BFS to nearest frontier,
+  door USE) also 0/5. C7 needs a stronger exploration policy, not more labels.
+- **C9/C10/C12**: the teacher is still 0/3 after the door fix; no usable demos.
+- **Reflex experiments**: a ray-distance wall detector fixed C7's stuck state
+  but broke C5 (5/5 → 2/5); reverted. 48-step combat hold did not improve C9.
+- **Ship state unchanged**: the Phase-4 hybrid (+6.20 val / +6.40 test) remains
+  the best candidate; experimental checkpoints are not promoted.
+
+The teacher's remaining C7 failure is the door task: at (1376,224) it plans a
+127-cell path but the door task stays at stage 1 and never moves. Fixing that
+state machine is the next concrete step for exploration labels.
