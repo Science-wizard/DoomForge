@@ -282,7 +282,7 @@ submission/
   agent.py          DoomAgent: load, reset, act (sanitised, argmax, CPU-safe)
   model.py          Baseline A/B+ network
   mapmem.py         deterministic ego-motion map (perception only)
-  weights/          Git LFS checkpoint
+  weights/          Git LFS: Atlas-G + combat specialist
 training/
   maps/             procedural generator, drills, Freedoom preparation
   teacher/          privileged A*/frontier expert (TRAINING ONLY)
@@ -310,22 +310,32 @@ validate.py         official validator (untouched)
   `DoomAgent` contract are untouched.
 - No Dockerfile, no CI/CD, no network or engine access at inference, no writes outside
   `/tmp`.
-- Every action is a forward pass of trained parameters. The teacher, A*, BFS and door
-  state machines live only under `training/` and are never imported by `submission/`.
+- Every action is a forward pass of trained parameters plus a deterministic,
+  observation-only anti-freeze reflex. The teacher, A*, BFS and door state machines
+  live only under `training/` and are never imported by `submission/`.
 - Weights use Git LFS; data shards and checkpoints from intermediate runs are gitignored;
   the repository is ≪ 1 GB.
 - Deterministic argmax; identical actions on repeat runs.
 
 ---
 
-## What is next (Phase 2)
+## Phase 3 status and next
 
-1. **PPO** from the BC checkpoint with the map-aware policy, 8 workers, curriculum
-   drills → tier 2 → tier 2–3 with monsters → full tier 2–4 + Freedoom train.
-2. **Event tokens** for locked doors/keys/exit cues, with a memory-wipe ablation.
-3. **Translation-only scan matching** to hold drift under one cell per 200 steps.
-4. **Held-out report** on Freedoom MAP23–32 and OOD generator seeds; freeze at the
-   deadline.
+Shipped: the perception-routed hybrid (Atlas-G + PPO-25 + reflex), val +5.70,
+test +5.79, validator PASS. Known gaps, in priority order:
+
+1. **C7/C9–C13** (exploration, ambush, scarce ammo, gauntlet, Freedoom, OOD) are still
+   0% exits. The next training round should add exploration demonstrations and
+   resource-aware combat; a full 30-map × 5-seed test is reserved for that candidate.
+2. **C3 corridor door** regressed when the map pose was made correct during reflex
+   turns. A learned recovery policy trained with the reflex in the loop should fix it
+   without the pose compromise.
+3. **Learned router**: replace the enemy-visibility rule with a small gate trained on
+   the suite's category outcomes; keep the rule as the fallback and the gate must beat
+   it on the paired gate.
+4. **Scan matching / event tokens** only if the probes show drift or memory-wipe
+   sensitivity; the current fast suite does not.
+5. **Submission**: flip the repository to public and send the URL before the deadline.
 
 <div align="center">
 <sub>Built during Yugaantar DevForge 2026. DOOM is a trademark of id Software; Freedoom is BSD-licensed.</sub>
