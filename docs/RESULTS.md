@@ -43,6 +43,44 @@ Tier-weighted proxy (1, 1.2, 1.5, 2) over t1–t4:
 `bc_map2_e0` ≈ **−5.40**, `bc_use` ≈ **−3.29**, `bc_arena` ≈ **+3.17**.
 The arena fine-tune is the clear Phase-1 winner; the door branch still wins door drills.
 
+## Phase 2 — PPO fine-tune
+
+A 25-update PPO run (25.6k environment steps, 8 envs, dense new-cell/door/exit reward)
+from the arena checkpoint:
+
+| Suite | `bc_arena` | PPO-25 |
+|---|---:|---:|
+| t1 exits | 5/8 | **6/8** |
+| t1 proxy | +5.42 | **+8.20** |
+| t1 kills | 4 | **19** |
+| t2 proxy | −0.18 | **+0.48** |
+| t3 proxy | −0.38 | **−0.03** |
+| t4 proxy | −0.73 | **−0.32** |
+| drills | 0/8 | 0/8 |
+| Freedoom 23–32 proxy | +1.00 | **+0.36** |
+| Freedoom coverage | 3.6% | 1.6% |
+| Freedoom kills | 2 | **11** |
+
+Tier-weighted proxy over t1–t4: **+8.09** (from +3.17). PPO improves every tier proxy and tier-1 substantially, but it still does not learn
+USE/door drills. `ppo_explore/ckpt.pt` is the shipped Phase-2 checkpoint. A resumed run and a
+learned mixture-of-experts gate with the door specialist are the next attempts.
+
+### Mixture of experts (measured, not shipped)
+
+Two frozen specialists — PPO-25 (tier-1 6/8) and `bc_use` (drills 6/8) — plus a
+2k-parameter gate over observation-only door/ray/map features. Routing results:
+
+| Gate | threshold | t1 | drills | t2 proxy | weighted t1–t4 |
+|---|---|---:|---:|---:|---:|
+| distilled (BC) | 0.5 soft | 2/8 | 6/8 | +0.23 | — |
+| distilled (BC) | 0.5 hard | 6/8 | 0/8 | +0.48 | +8.09 |
+| supervised near-door | 0.1 hard | 5/8 | **6/8** | +0.32 | **+3.59** |
+| supervised near-door | 0.5 hard | 6/8 | 0/8 | +0.48 | +8.09 |
+
+The supervised gate genuinely routes doors (6/8 drills) but the door expert costs one
+tier-1 exit and lowers t2–t4 proxies (t3 −0.22, t4 −0.93), so PPO-25 remains the
+shipped hidden-tier agent. The code stays in `training/moe.py` for Phase 3.
+
 ## What the numbers mean
 
 1. **The two-map eval was optimistic.** Tier-1 exits are 2/8 (25%), not 2/2. The hidden

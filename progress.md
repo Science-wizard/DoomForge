@@ -115,6 +115,54 @@ held-out evaluation, then freeze at the deadline.
 
 ---
 
+## Phase 2 — exploration RL and mixture of experts (in progress)
+
+### PPO
+
+A 25-update PPO run (25.6k env steps, 8 envs, dense new-cell/door/exit reward) from the
+arena checkpoint:
+
+| Suite | `bc_arena` | PPO-25 |
+|---|---:|---:|
+| tier 1 exits | 5/8 | **6/8** |
+| tier 1 proxy | +5.42 | **+8.20** |
+| tier 1 kills | 4 | **19** |
+| tier 2 proxy | −0.18 | **+0.48** |
+| tier 3 proxy | −0.38 | **−0.03** |
+| tier 4 proxy | −0.73 | **−0.32** |
+| door drills | 0/8 | 0/8 |
+
+Tier-weighted proxy **+8.09** (from +3.17). PPO fixed the t1 regression and improved
+every tier proxy, but still cannot use doors. The 20-update resume is running.
+
+### Mixture of experts
+
+Two frozen specialists:
+- **arena/PPO** — tier-1 exits, 19 kills, t2 proxy +0.48;
+- **door** — `bc_use`, 6/8 door drills, 1 key.
+
+Two frozen specialists: PPO-25 (tier-1 6/8) and `bc_use` (drills 6/8). A 2k gate over
+30 observation-only features routes per step. Results:
+
+| Gate | t1 | drills | t2 proxy | t3/t4 | verdict |
+|---|---:|---:|---:|---:|---|
+| distilled | 2/8 soft, 6/8 hard | 6/8 soft, 0/8 hard | +0.23 / +0.48 | — | fails |
+| supervised near-door, hard 0.1 | 5/8 | **6/8** | +0.32 | −0.22 / −0.93 | doors work, tiers regress |
+| supervised near-door, hard 0.5 | 6/8 | 0/8 | +0.48 | −0.03 / −0.32 | identical to PPO |
+
+The gate can learn “door in view → door expert”, but the door expert is worse on arena
+and rooms; the mixture is not shipped. PPO-25 remains the best hidden-tier agent.
+
+### Teacher work
+
+A local ray-based door reflex was added to the teacher (press once, 30-step cooldown,
+locked doors only with a key). It still cannot align with arbitrary room doors; the
+frontier teacher explores 160–305 cells on door-free maps but never exits within 1050
+steps. Room-door drills are 200/200 with the A* teacher; the door expert trained on them
+scores 4/8 drills and 0/8 room doors, so straight drills do not transfer.
+
+---
+
 ## Phase 1 result: Baseline A is not Markovian enough — pivot to B+ minimal
 
 ### What happened

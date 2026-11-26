@@ -45,9 +45,13 @@ def _ce_masked(logits, heads, mask):
 
 
 def train_gate(arena: DoomNet, door: DoomNet, data: str, out: Path, epochs: int,
-               batch_size: int, lr: float, device: str) -> Gate:
+               batch_size: int, lr: float, device: str, max_windows: int = 400,
+               supervised: bool = True) -> Gate:
     raw = load_episodes(data)
     eps = window_episodes(raw, 128, 64)
+    rng0 = np.random.default_rng(1)
+    rng0.shuffle(eps)
+    eps = eps[:max(50, max_windows)]
     gate = Gate().to(device)
     opt = torch.optim.AdamW(gate.parameters(), lr=lr, weight_decay=1e-4)
     rng = np.random.default_rng(0)
@@ -58,14 +62,19 @@ def train_gate(arena: DoomNet, door: DoomNet, data: str, out: Path, epochs: int,
         for b in range(0, len(eps), batch_size):
             batch = collate([eps[i] for i in order[b:b + batch_size]], device)
             obs = {k: batch[k] for k in OBS_KEYS}
-            with torch.no_grad():
-                la = arena.forward_seq(arena.encode(obs))[0]
-                ld = door.forward_seq(door.encode(obs))[0]
             g = gate(gate_features(obs))
-            logits = g * ld + (1.0 - g) * la
-            door_any = ((batch["rays_hit"] == 2) | (batch["rays_hit"] == 3)).any(-1).float()
-            w = batch["mask"] * (1.0 + 5.0 * door_any)
-            loss = _ce_masked(logits, batch["heads"], w)
+            door_hit = ((batch["rays_hit"] == 2) | (batch["rays_hit"] == 3)).to(batch["rays_dist"].dtype)
+            min_door = torch.where(door_hit > 0.5, batch["rays_dist"], torch.ones_like(batch["rays_dist"])).min(-1).values
+            near_door = ((door_hit.max(-1).values > 0.5) & (min_door < 0.30)).float()
+            if supervised:
+                bce = F.binary_cross_entropy(g.squeeze(-1), near_door, reduction="none")
+                loss = (bce * batch["mask"]).sum() / batch["mask"].sum().clamp(min=1.0)
+            else:
+                with torch.no_grad():
+                    la = arena.forward_seq(arena.encode(obs))[0]
+                    ld = door.forward_seq(door.encode(obs))[0]
+                logits = g * ld + (1.0 - g) * la
+                loss = _ce_masked(logits, batch["heads"], batch["mask"])
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
@@ -81,8 +90,11 @@ def train_gate(arena: DoomNet, door: DoomNet, data: str, out: Path, epochs: int,
 
 # --------------------------------------------------------------------------- eval
 class MoERunner:
-    def __init__(self, arena: DoomNet, door: DoomNet, gate: Gate, device: str = "cpu"):
+    def __init__(self, arena: DoomNet, door: DoomNet, gate: Gate, device: str = "cpu",
+                 hard: bool = True, threshold: float = 0.5):
         self.arena, self.door, self.gate, self.device = arena, door, gate, device
+        self.hard = hard
+        self.threshold = threshold
         self.h_a = self.h_d = None
         self.prev = None
         self.turn_held = 0
@@ -105,6 +117,8 @@ class MoERunner:
         la, _, _, self.h_a = self.arena.forward_step(batch, self.h_a)
         ld, _, _, self.h_d = self.door.forward_step(batch, self.h_d)
         g = self.gate(gate_features(batch))
+        if self.hard:
+            g = (g > self.threshold).to(g.dtype)
         logits = g * ld + (1.0 - g) * la
         heads = self.arena.flat_action(logits, sample=False)
         a = self.arena.actions_to_binary(heads)[0].cpu().numpy().astype(np.int8)
@@ -186,6 +200,8 @@ def main() -> None:
     ap.add_argument("--batch", type=int, default=16)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--max-windows", type=int, default=400)
+    ap.add_argument("--distill", action="store_true")
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -197,7 +213,7 @@ def main() -> None:
         p.requires_grad_(False)
     for p in door.parameters():
         p.requires_grad_(False)
-    gate = train_gate(arena, door, args.data, out, args.epochs, args.batch, args.lr, args.device)
+    gate = train_gate(arena, door, args.data, out, args.epochs, args.batch, args.lr, args.device, args.max_windows, supervised=not args.distill)
     torch.save({"gate": gate.state_dict()}, out / "gate.pt")
     print("saved", out / "gate.pt")
 

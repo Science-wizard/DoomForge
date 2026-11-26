@@ -157,21 +157,22 @@ weights are hidden.
 
 | Split | Exit | Keys | Doors | Unique sectors | Proxy |
 |---|---:|---:|---:|---:|---:|
-| Generated tier 1 (combat) | **5/8** | 0 | 0 | 100% | **+5.42** |
-| Generated tier 2 (exploration) | 0/8 | 0 | 1 | 6.1% | −0.18 |
-| Generated tier 3 (key → lock) | 0/8 | 0 | 2 | 4.2% | −0.38 |
-| Generated tier 4 (gauntlet) | 0/8 | 0 | 3 | 2.0% | −0.73 |
+| Generated tier 1 (combat) | **6/8** | 0 | 0 | 100% | **+8.20** |
+| Generated tier 2 (exploration) | 0/8 | 0 | 1 | 6.1% | **+0.48** |
+| Generated tier 3 (key → lock) | 0/8 | 0 | 1 | 4.2% | −0.03 |
+| Generated tier 4 (gauntlet) | 0/8 | 0 | 5 | 2.0% | −0.32 |
 | Door drills | 0/8 | 0 | 0 | 47.5% | +0.60 |
-| Freedoom MAP23–32 (unseen) | 0/10 | 0 | — | 3.6% | +1.00 |
+| Freedoom MAP23–32 (unseen) | 0/10 | 0 | — | 1.6% | +0.36 |
 
 **Eight maps per generated tier**, fixed bench seeds `30000+` (never used for training),
 one engine seed, Freedoom MAP23–32 held out. This is the honest number; the earlier
 “2/2” was a two-map eval and is superseded. A separate drill-only branch reaches
 **6/8 door drills** but trades away arena exits (see `progress.md`).
 
-The shipped checkpoint is the **arena specialist** (`bc_arena`). Phase 2 must combine
-arena exits and door skills without catastrophic forgetting; the KL-anchored replay
-experiment is the current attempt.
+The shipped checkpoint is **PPO-25** (25.6k steps from the arena specialist): tier-1
+**6/8** exits with 19 kills, and every tier proxy improved. Doors and tiers 2–4 remain
+the Phase-2 target; a learned mixture-of-experts gate with the 6/8 door specialist is
+the current attempt.
 
 The full lab log is in [`progress.md`](progress.md), the benchmark method and every
 per-checkpoint row is in [`docs/RESULTS.md`](docs/RESULTS.md), and the 24-hour plan and gates
