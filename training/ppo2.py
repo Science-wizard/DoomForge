@@ -49,6 +49,12 @@ IDLE_PENALTY = 0.01
 STAG_WINDOW = 16
 STAG_PENALTY = 0.02
 KEY_REWARD = 5.0
+# Survival: at 3/1 and 0.01/HP the policy traded its life for kills (u100 died
+# in 8/10 val arenas), so dying and damage cost more.
+DEATH_EARLY = 6.0
+DEATH_BASE = 4.0
+DAMAGE_PER_HP = 0.02
+USE_FAR_PENALTY = 0.02
 SEEN_REWARD = 0.004
 SUITE_TRAIN = "training/data/suite/train/manifest.jsonl"
 ENEMY_TYPES = (1, 2, 3)
@@ -289,19 +295,25 @@ class Slot:
             x0, y0 = self.pos_hist[0]
             if math.hypot(p["x"] - x0, p["y"] - y0) < 48.0:
                 r -= STAG_PENALTY
-        # USE on a locked door without any key is wasted.
+        # Wasted USE: on a locked door without any key, or with no door within
+        # reach (~72 units) straight ahead.  The C6 failure was holding both
+        # keys and pressing USE 130 units short of the second lock forever.
         a_np = np.asarray(action)
-        if int(a_np[7]) and float(np.asarray(p["keys"]).sum()) < 0.5:
+        if int(a_np[7]):
             hit = np.asarray(self.obs["rays"]["hit_type"])
             dist = np.asarray(self.obs["rays"]["distance"])
             front = [0, 1, 2, 62, 63]
-            if np.any((hit[front] == 3) & (dist[front] < 0.12)):
+            door_close = (hit[front] == 2) | (hit[front] == 3)
+            door_close &= dist[front] < 0.07
+            if not door_close.any():
+                r -= USE_FAR_PENALTY
+            elif float(np.asarray(p["keys"]).sum()) < 0.5 and np.any((hit[front] == 3) & (dist[front] < 0.12)):
                 r -= 0.02
         if p["exit_reached"]:
             r += 10.0 + 2.0 * max(0.0, 1.0 - frac)
             self.ep["exit"] = 1
         if p["dead"]:
-            r -= 3.0 * max(0.0, 1.0 - frac) + 1.0
+            r -= DEATH_EARLY * max(0.0, 1.0 - frac) + DEATH_BASE
             self.ep["dead"] = 1
         dk = p["kills"] - self.kills
         if dk > 0:
@@ -310,7 +322,7 @@ class Slot:
         self.kills = p["kills"]
         dd = p["damage_taken"] - self.damage
         if dd > 0:
-            r -= 0.01 * dd
+            r -= DAMAGE_PER_HP * dd
         self.damage = p["damage_taken"]
         nk = int((np.asarray(p["keys"]) > 0.5).sum())
         if nk > self.keys:
@@ -526,6 +538,7 @@ def main() -> None:
     ap.add_argument("--bc-weight-final", type=float, default=0.0)
     ap.add_argument("--bc-batch", type=int, default=8)
     ap.add_argument("--save-every", type=int, default=50)
+    ap.add_argument("--ema", type=float, default=0.95, help="per-update weight EMA decay (0 = off)")
     args = ap.parse_args()
 
     device = args.device if (args.device != "mps" or torch.backends.mps.is_available()) else "cpu"
@@ -595,6 +608,9 @@ def main() -> None:
     b_ha = np.zeros((T, E, anchor.hidden), np.float32)
     h_anchor = torch.zeros(1, E, anchor.hidden, device=device)
 
+    ema = {k: v.detach().clone() for k, v in net.state_dict().items()} if args.ema > 0 else None
+    if ema is not None and args.resume and (out / "ema.pt").exists():
+        ema = torch.load(out / "ema.pt", map_location=device, weights_only=False)
     log = (out / "train.jsonl").open("a")
     recent: deque = deque(maxlen=400)
     cat_stats: dict[str, deque] = {}
@@ -763,6 +779,13 @@ def main() -> None:
                                ("approx_kl", akl), ("clipfrac", cf)):
                     stats[k_].append(float(v_.detach()))
 
+        if ema is not None:
+            with torch.no_grad():
+                for k, v in net.state_dict().items():
+                    if v.dtype.is_floating_point:
+                        ema[k].mul_(args.ema).add_(v.detach(), alpha=1.0 - args.ema)
+                    else:
+                        ema[k].copy_(v)
         # curriculum weights: favour categories that are not yet solved
         if cat_stats:
             weights = {}
@@ -787,8 +810,13 @@ def main() -> None:
             state = {"model": net.state_dict(), "config": {"hidden": net.hidden, "arch": "ego"},
                      "update": update, "steps": total_steps}
             torch.save(state, out / "ckpt.pt")
+            if ema is not None:
+                torch.save(ema, out / "ema.pt")
             if (update + 1) % args.save_every == 0:
                 torch.save(state, out / f"ckpt_u{update + 1:04d}.pt")
+                if ema is not None:
+                    torch.save({**state, "model": {k: v.cpu() for k, v in ema.items()}},
+                               out / f"ckpt_u{update + 1:04d}_ema.pt")
 
     for c in conns:
         c.send(("close", None))
