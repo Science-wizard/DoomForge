@@ -29,7 +29,7 @@ from submission.model import (AUX_DAMAGE, AUX_DOOR, AUX_ENEMY, AUX_EXIT_BEARING,
                               HEAD_SIZES, DoomNet, vector_to_actions)
 
 
-def load_episodes(data_dir: str | Path, min_steps: int = 8) -> list[dict]:
+def load_episodes(data_dir: str | Path, min_steps: int = 8, arch: str = "atlas") -> list[dict]:
     dirs = [Path(p) for p in str(data_dir).split(",") if p.strip()]
     eps = []
     rows = []
@@ -46,6 +46,13 @@ def load_episodes(data_dir: str | Path, min_steps: int = 8) -> list[dict]:
             ep = {k: z[k] for k in z.files}
         if len(ep["action"]) < min_steps:
             continue
+        if arch == "ego":
+            ego_path = Path(row["_dir"]) / "ego" / row["file"]
+            if not ego_path.exists():
+                continue
+            with np.load(ego_path) as z:
+                ep["map"] = z["egomap"]  # packed uint16 (T, 32, 32)
+                ep["pose"] = z["pose"]
         ep["meta"] = row
         ep["heads"] = np.stack([np.array(vector_to_actions(a), np.int64) for a in ep["action"]])
         if "map" not in ep:
@@ -92,6 +99,7 @@ def window_episodes(eps: list[dict], window: int = 128, stride: int = 64) -> lis
 def collate(batch: list[dict], device: str) -> dict:
     T = max(len(ep["action"]) for ep in batch)
     B = len(batch)
+    ego = batch[0]["map"].ndim == 3  # packed (T, 32, 32) uint16
     out = {
         "rays_dist": torch.zeros(B, T, 64),
         "rays_hit": torch.zeros(B, T, 64, dtype=torch.long),
@@ -101,7 +109,7 @@ def collate(batch: list[dict], device: str) -> dict:
         "vitals": torch.zeros(B, T, 17),
         "rgb": torch.zeros(B, T, 3, 30, 40),
         "prev_action": torch.zeros(B, T, 12),
-        "map": torch.zeros(B, T, 6, 32, 32),
+        "map": torch.zeros(B, T, 32, 32, dtype=torch.int32) if ego else torch.zeros(B, T, 6, 32, 32),
         "pose": torch.zeros(B, T, 6),
         "goal": torch.zeros(B, T, 8),
         "goal_type": torch.zeros(B, T, dtype=torch.long),
@@ -124,7 +132,7 @@ def collate(batch: list[dict], device: str) -> dict:
         out["vitals"][i, :n] = torch.from_numpy(ep["vitals"].astype(np.float32))
         out["rgb"][i, :n] = torch.from_numpy(ep["rgb"].astype(np.float32)) / 255.0
         out["prev_action"][i, :n] = torch.from_numpy(ep["prev"].astype(np.float32))
-        out["map"][i, :n] = torch.from_numpy(ep["map"].astype(np.float32))
+        out["map"][i, :n] = torch.from_numpy(ep["map"].astype(np.int32 if ego else np.float32))
         out["pose"][i, :n] = torch.from_numpy(ep["pose"].astype(np.float32))
         if "goal" in ep:
             out["goal"][i, :n] = torch.from_numpy(ep["goal"].astype(np.float32))
@@ -156,7 +164,11 @@ def collate(batch: list[dict], device: str) -> dict:
         running = out["reward"][:, t] + gamma * running * (out["mask"][:, t] > 0)
         ret[:, t] = running
     out["returns"] = ret
-    return {k: v.to(device) for k, v in out.items()}
+    res = {k: v.to(device) for k, v in out.items()}
+    if ego:
+        from training.egomaps import unpack_torch
+        res["map"] = unpack_torch(res["map"])
+    return res
 
 
 def batch_loss(net: DoomNet, batch: dict, anchor: DoomNet | None = None,
@@ -265,13 +277,16 @@ def main() -> None:
     ap.add_argument("--anchor-weight", type=float, default=0.5)
     ap.add_argument("--anchor-all", action="store_true")
     ap.add_argument("--success-only", action="store_true")
+    ap.add_argument("--arch", default="atlas", choices=("atlas", "ego"))
+    ap.add_argument("--quick-eval", action="store_true")
+    ap.add_argument("--repeat", default="", help="tag=k,... oversample episodes by manifest tag")
     args = ap.parse_args()
 
     torch.set_num_threads(min(10, os.cpu_count() or 4))
     device = args.device
     if device == "auto":
         device = "mps" if torch.backends.mps.is_available() else "cpu"
-    raw = load_episodes(args.data)
+    raw = load_episodes(args.data, arch=args.arch)
     if args.success_only:
         before = len(raw)
         raw = [e for e in raw if e.get("meta", {}).get("exit")]
@@ -279,6 +294,11 @@ def main() -> None:
     if args.drill_repeat > 1:
         drills = [e for e in raw if e.get("meta", {}).get("tag") == "drill"]
         raw = raw + drills * (args.drill_repeat - 1)
+    for item in [x for x in args.repeat.split(",") if x]:
+        tag, k = item.split("=")
+        sel = [e for e in raw if str(e.get("meta", {}).get("tag", "")).startswith(tag)]
+        raw = raw + sel * (int(k) - 1)
+        print(f"repeat {tag} x{k}: +{len(sel) * (int(k) - 1)} episodes")
     eps = window_episodes(raw, args.window, args.stride)
     if not eps:
         raise SystemExit(f"no episodes in {args.data}")
@@ -288,7 +308,7 @@ def main() -> None:
     val, train = eps[:n_val], eps[n_val:]
     print(f"{len(train)} train / {len(val)} val episodes, device={device}")
 
-    net = DoomNet().to(device)
+    net = DoomNet(arch=args.arch).to(device)
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
     if args.resume:
         ckpt = torch.load(args.resume, map_location=device)
@@ -297,8 +317,8 @@ def main() -> None:
     anchor = None
     if args.anchor:
         a_ck = torch.load(args.anchor, map_location=device)
-        anchor = DoomNet(hidden=a_ck.get("config", {}).get("hidden", 384))
-        anchor.load_state_dict(a_ck["model"] if "model" in a_ck else a_ck)
+        from submission.model import build_from_state
+        anchor = build_from_state(a_ck["model"] if "model" in a_ck else a_ck, a_ck.get("config", {}))
         anchor.to(device).eval()
         for p_ in anchor.parameters():
             p_.requires_grad_(False)
@@ -350,10 +370,10 @@ def main() -> None:
                     vb.append(float(l))
                 val_loss = float(np.mean(vb))
             net.train()
-        metrics = evaluate_quick(net, device, seed=10_000)
-        torch.save({"model": net.state_dict(), "config": {"hidden": net.hidden},
+        metrics = evaluate_quick(net, device, seed=10_000) if args.quick_eval else {}
+        torch.save({"model": net.state_dict(), "config": {"hidden": net.hidden, "arch": net.arch},
                     "epoch": epoch, "val_loss": val_loss, "metrics": metrics}, out / "ckpt.pt")
-        torch.save({"model": net.state_dict(), "config": {"hidden": net.hidden}},
+        torch.save({"model": net.state_dict(), "config": {"hidden": net.hidden, "arch": net.arch}},
                    out / f"ckpt_e{epoch}.pt")
         row = {"epoch": epoch, "loss": totals["loss"] / n, "ce": totals["ce"] / n,
                "aux": totals["aux"] / n, "value": totals["value"] / n,

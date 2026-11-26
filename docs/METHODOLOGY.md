@@ -255,3 +255,25 @@ may not have a GPU), with p50 1.7 ms / p99 2.1 ms.
   simple and auditable.
 - The full 30-map × 5-seed test has not been run; the fast test is 70 episodes.
 - Proxy weights are assumptions. The official scorer is hidden.
+
+## 15. Phase 5 changes
+
+- **Odometry**: corrected turn-run and friction/wall-clip integration
+  (`ARCHITECTURE.md` §6.1); old checkpoints run with the legacy integration.
+- **Ego map**: heading-up two-scale 16×32×32 crop; demo maps regenerated
+  offline by replaying stored observations (`training/egomaps.py`, bit-packed
+  to 2 KB/step).
+- **PPO** (`training/ppo2.py`): 9 worker processes × 6 envs, double-buffered
+  inference on MPS; GAE(0.995, 0.95) bootstrapped from the next observation;
+  asymmetric critic with 16 privileged features (time left, geodesic distance
+  and bearing to the current objective, keys, coverage, ...); detached critic
+  features so only the policy loss and anchor shape the trunk; exact KL anchor
+  computed from stored anchor hidden states; 5–15 critic-only warm-up updates.
+- **Reward** (training only): exit +10 (+2 × time left), key +3, lock +3,
+  door +0.5, new sector +0.3, new 64-unit cell +0.01, kill +0.6, damage
+  −0.01/HP, early death −(3(1−t/T)+1), time −0.001, geodesic progress
+  +0.003/unit toward the current objective (exit if reachable with held keys,
+  else the nearest needed key), idle penalty after 8 no-ops (`ppo_ego2`).
+- **Selection**: candidates are scored on the full val split (136 episodes);
+  promotion uses the paired gate; the 70-episode fast split is only for quick
+  reads (its 5-map categories swing by 20–40 points).

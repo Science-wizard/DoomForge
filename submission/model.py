@@ -175,6 +175,30 @@ class MapEncoder(nn.Module):
         return self.out(self.net(m))
 
 
+class EgoMapEncoder(nn.Module):
+    """16x32x32 heading-up two-scale crop -> 192 (Atlas-E).
+
+    The first layer keeps full resolution so one-cell features (a door in a wall,
+    a frontier cell) survive; three stride-2 layers then reach a 4x4 summary.
+    """
+
+    def __init__(self, in_ch: int = 16, out: int = 192):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(in_ch, 32, 3, padding=1), nn.GELU(),
+            nn.Conv2d(32, 64, 3, stride=2, padding=1), nn.GELU(),
+            nn.Conv2d(64, 64, 3, stride=2, padding=1), nn.GELU(),
+            nn.Conv2d(64, 64, 3, stride=2, padding=1), nn.GELU(),
+        )
+        self.out = nn.Sequential(nn.Flatten(), nn.Linear(64 * 4 * 4, out), nn.GELU())
+
+    def forward(self, m: torch.Tensor) -> torch.Tensor:
+        return self.out(self.net(m))
+
+
+PRIV = 16  # privileged critic features (training only, never used to act)
+
+
 class PoseEncoder(nn.Module):
     def __init__(self, out: int = 32):
         super().__init__()
@@ -253,24 +277,48 @@ class GoalEncoder(nn.Module):
 
 
 class DoomNet(nn.Module):
-    def __init__(self, hidden: int = HIDDEN):
+    """Atlas-G (``arch="atlas"``, 6x32x32 world-aligned map) or Atlas-E
+    (``arch="ego"``, 16x32x32 heading-up two-scale map + privileged critic)."""
+
+    def __init__(self, hidden: int = HIDDEN, arch: str = "atlas"):
         super().__init__()
         self.hidden = hidden
+        self.arch = arch
+        self.map_ch = 16 if arch == "ego" else MAP_CH
         self.ray = RayEncoder(128)
         self.ent = EntityEncoder(128)
         self.vit = VitalsEncoder(64)
         self.rgb = RGBEncoder(128)
         self.prev = PrevEncoder(32)
-        self.map = MapEncoder(128)
+        if arch == "ego":
+            self.map = EgoMapEncoder(self.map_ch, 192)
+            base = 128 + 128 + 64 + 128 + 32 + 192 + 32
+        else:
+            self.map = MapEncoder(128)
+            base = 640
         self.pose = PoseEncoder(32)
-        self.goal_head = GoalHead(640, 64)
+        self.goal_head = GoalHead(base, 64)
         self.goal = GoalEncoder(32)
-        self.fuse = nn.Sequential(nn.Linear(672, hidden), nn.GELU())
+        self.fuse = nn.Sequential(nn.Linear(base + 32, hidden), nn.GELU())
         self.gru = nn.GRU(hidden, hidden, batch_first=True)
         self.trunk = nn.Sequential(nn.Linear(hidden, hidden), nn.GELU())
         self.actor = nn.Linear(hidden, sum(HEAD_SIZES))
         self.critic = nn.Linear(hidden, 1)
         self.aux = nn.Linear(hidden, AUX_SIZE)
+        if arch == "ego":
+            # Asymmetric critic: sees privileged progress features during PPO.
+            # It is a training baseline only; acting never reads it.
+            self.critic_priv = nn.Sequential(nn.Linear(hidden + PRIV, 256), nn.GELU(),
+                                             nn.Linear(256, 1))
+
+    def value_priv(self, z: torch.Tensor, priv: torch.Tensor) -> torch.Tensor:
+        return self.critic_priv(torch.cat([z, priv], dim=-1))
+
+    def forward_seq_z(self, emb: torch.Tensor, h: torch.Tensor | None = None):
+        """Like forward_seq but also returns the trunk features (for the critic)."""
+        y, h = self.gru(emb, h)
+        z = self.trunk(y)
+        return self.actor(z), self.critic(z), self.aux(z), z, h
 
     # ------------------------------------------------------------------ encoding
     def encode_with_goal(self, obs: dict):
@@ -282,7 +330,7 @@ class DoomNet(nn.Module):
         v = self.vit(obs["vitals"].reshape(n, 17))
         g = self.rgb(obs["rgb"].reshape(n, 3, RGB_H, RGB_W))
         p = self.prev(obs["prev_action"].reshape(n, PREV))
-        m = self.map(obs["map"].reshape(n, MAP_CH, MAP_H, MAP_W))
+        m = self.map(obs["map"].reshape(n, self.map_ch, MAP_H, MAP_W))
         q = self.pose(obs["pose"].reshape(n, POSE))
         base = torch.cat([r, e, v, g, p, m, q], dim=-1)
         gv, gt = self.goal_head(base)
@@ -345,6 +393,15 @@ class DoomNet(nn.Module):
             (t == 1).float(), (t == 2).float(),
             atk.float(), use.float(), nxt.float(),
         ], dim=-1)
+
+
+def build_from_state(sd: dict, config: dict | None = None) -> "DoomNet":
+    """Instantiate the right architecture for a saved state dict."""
+    config = config or {}
+    arch = config.get("arch") or ("ego" if sd["map.net.0.weight"].shape[1] == 16 else "atlas")
+    net = DoomNet(hidden=config.get("hidden", HIDDEN), arch=arch)
+    net.load_state_dict(sd)
+    return net
 
 
 @dataclass

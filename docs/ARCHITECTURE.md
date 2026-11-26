@@ -298,3 +298,68 @@ corridors (C0 0%, C5 0%); Atlas-G solves C0/C3/C5/C8 but is worse in open
 combat. A single policy trained on all of it catastrophically forgot one side
 (BC v5: C5 100% but t1 0/12; PPO v2: mean return up but C5 0/5). Routing on a
 perception cue the agent already possesses is the measured best of both.
+
+---
+
+## 6. Atlas-E (Phase 5, shipped)
+
+Phase 5 replaced the three-network hybrid with **one network** trained by
+behaviour cloning and then large-scale PPO. Three findings drove it.
+
+### 6.1 The map was wrong
+
+`MapBuilder`'s dead reckoning had two bugs, measured against privileged pose
+on random action sequences:
+
+| | heading error @100 / 500 steps | position error @500 steps |
+|---|---:|---:|
+| Phase 1–4 odometry | 33° / 25° | 431 units |
+| turn-run fix | 0.01° / 0.02° | 269 units |
+| + friction model + wall clip | 0.01° / 0.02° | **31 units** |
+
+1. **Turn reversal.** Doom's `turnheld` counts consecutive turning tics in
+   *either* direction, so a left→right reversal turns at the full 14.06°/step.
+   The old code reset the run on a direction change and predicted 7.03°.
+2. **Translation.** Per tic Doom adds thrust, moves by momentum, then applies
+   friction (0.90625). The new integrator recovers the constant thrust from the
+   world-frame momentum at both ends of the step and integrates four tics
+   (0.83 vs 2.25 units/step error). While the player is pinned against a wall
+   the engine keeps reporting momentum, so the step is clipped by the free
+   distance the previous rays saw in the direction of travel.
+
+The Phase 1–4 checkpoints were trained on the drifting maps, so they run with
+`MapBuilder(legacy=True)`, which reproduces the old integration exactly
+(feeding them corrected maps drops C6 from 100% to 0%).
+
+### 6.2 Egocentric two-scale map
+
+`submission/mapmem.py::EgoMap` keeps a 160×160 allocentric grid at 64 u/cell
+(10,240 units) with eight channels: free, wall, door, locked door, item, key,
+**trail** (cells the agent physically occupied), frontier. It is read out as two
+**heading-up** 32×32 crops, fine (64 u/cell, the ray range) and coarse
+(256 u/cell, max-pooled, 8,192 units), giving a 16×32×32 input. Heading-up makes
+"frontier ahead-left" the same pixels at every absolute heading. The old
+world-aligned crop made the network learn rotation from a sin/cos input.
+Doors that open are cleared from the door channels when rays pass through them.
+Cost: ~0.55 ms/step in NumPy. This is still deterministic perception (projection at the
+estimated pose); there is no search or planning.
+
+### 6.3 Network
+
+Atlas-G's encoders, goal head, GRU(384) and factorised heads are unchanged,
+except for the map encoder: a stride-1 3×3 conv keeps one-cell features (a door
+in a wall, a frontier cell) before three stride-2 convs reach 4×4 → 192. The
+fused width is 704 + 32 (goal). **2.00 M acting parameters, 0.69 ms per decision
+on one CPU thread.** A training-only asymmetric critic (`critic_priv`,
+hidden + 16 privileged features → 256 → 1) is stored in the checkpoint and never
+evaluated by the agent.
+
+### 6.4 Acting
+
+The agent samples from the six factorised heads at temperature 1 with a
+`torch.Generator` re-seeded on every `reset()`, so a map + engine seed always
+produces the same action sequence. PPO policies trained with sampling have
+near-ties that argmax resolves into freezes (90%+ no-op episodes on C7/C9 under
+argmax); sampling from the trained distribution removes them. There is no
+router, reflex or specialist: each action is drawn from the network's own
+output distribution.

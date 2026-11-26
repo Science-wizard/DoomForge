@@ -596,3 +596,38 @@ of the same labels.
 The teacher's remaining C7 failure is the door task: at (1376,224) it plans a
 127-cell path but the door task stays at stage 1 and never moves. Fixing that
 state machine is the next concrete step for exploration labels.
+
+## Phase 5 — Atlas-E (2026-11-26 night)
+
+Benchmarks were failing 8/14 categories, so I audited the whole pipeline and found the
+causes below before training anything new.
+
+- **Odometry bugs.** Turn reversals keep Doom's accelerated turn rate (the map
+  assumed a reset): 33° heading error after 100 steps. Translation ignored
+  friction and kept integrating momentum while pinned to walls: 431 units
+  drift after 500 steps. Fixed: 0.02° and 31 units. Old checkpoints keep the old
+  integration (`MapBuilder(legacy=True)`); feeding them corrected maps drops C6
+  100% → 0%.
+- **PPO bugs.** No bootstrap at rollout end, time-outs treated as deaths, a
+  cumulative `mean_return` that never reset (so PPO v2's "1.4 → 8.5" was an
+  artefact), the map integrating the action from two steps earlier, sequential
+  envs at ~50 steps/s. Rewritten as `training/ppo2.py`.
+- **Compass removed.** The reflex had grown an `atan2` steering rule toward
+  remembered doors/frontiers (RULES §1 risk). It contributed nothing measurable
+  (val +6.13 without vs +6.20 with, CI spans 0).
+- **Atlas-E**: heading-up 16×32×32 two-scale ego map (trail, key and frontier
+  channels), stride-1 map encoder, asymmetric privileged critic. BC on 436k
+  regenerated-map steps: val loss 0.63 (BC v5 0.99); C3 80% and C6 100% with no
+  specialist.
+- **PPO** from BC: 54 envs, 1,966 train maps (150/category), geodesic progress
+  shaping, learning-progress curriculum, exact KL anchor. u50 (230k steps) is the
+  best gated checkpoint.
+- **Sampling.** The same weights: +6.38 argmax vs +7.80 sampled (fast val).
+  Argmax freezes on near-ties; sampling is seeded per map.
+- **Result (full val, 136 eps):** +7.45 vs hybrid +6.19, paired +1.26
+  (CI +0.62…+1.93), PROMOTE, no regression. C1 30→90%, C4 40→60%, C8 40→100%.
+- **Dead ends:** u250 (C4 100%, C7 proxy +4.1, but C5 100→20%: parks at the
+  locked door); soups of u50/u250 (C5/C6 drop) and u50…u250 (+7.57 headline but
+  C5 −30, HOLD); routing Atlas-E through the old combat expert (C2 80→20%).
+- **Still 0%:** C7, C9–C13. Next: the anti-forgetting continuation (`ppo_ego2`)
+  and more samples.

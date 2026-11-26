@@ -74,7 +74,21 @@ python -m training.dagger --ckpt training/runs/bc_door/ckpt.pt \
 Runs the student, relabels every visited state with the teacher, and writes the same
 shard format so it can be mixed into BC.
 
-## PPO
+## PPO (Phase 5: `ppo2.py`)
+
+```bash
+python -m training.egomaps --data training/data/demos_v2_nav,...   # ego maps for BC
+python -m training.bc --arch ego --data ... --out training/runs/bc_ego1
+python -m training.ppo2 --init training/runs/bc_ego1/ckpt.pt --out training/runs/ppo_ego1 \
+    --workers 9 --envs-per-worker 6 --minibatch-windows 72
+```
+
+Parallel envs, bootstrapped GAE, asymmetric privileged critic, geodesic
+progress shaping, learning-progress curriculum, exact KL anchor. Logs per-episode
+return and per-category exit rates to `train.jsonl`. The legacy trainer below
+is kept for reference; it has known bugs (no bootstrap, cumulative return log).
+
+## PPO (legacy)
 
 ```bash
 python -m training.ppo --init training/runs/bc_door/ckpt.pt --updates 200

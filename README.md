@@ -2,14 +2,14 @@
 
 # DoomForge
 
-**Can a 1.8 M-parameter network learn to play unseen DOOM levels on one CPU thread?**
+**Can a 2 M-parameter network learn to play unseen DOOM levels on one CPU thread?**
 
 [![Track](https://img.shields.io/badge/Yugaantar%20DevForge-Track%201-b3261e?style=flat-square)](https://github.com/Science-wizard/DoomForge)
 [![Validator](https://img.shields.io/badge/validate.py-PASS-2ea44f?style=flat-square)](#validation)
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![ViZDoom](https://img.shields.io/badge/ViZDoom-1.3.3-5c2d91?style=flat-square)](https://vizdoom.farama.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.15-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![Latency](https://img.shields.io/badge/decision-1.7%20ms%20p50-0969da?style=flat-square)](#validation)
+[![Latency](https://img.shields.io/badge/decision-1.6%20ms%20p50-0969da?style=flat-square)](#validation)
 [![Repo size](https://img.shields.io/badge/repo-17.5%20MB-6f42c1?style=flat-square)](#repository)
 
 <img src="docs/assets/videos/C6_two_key_10000.gif" alt="DoomForge agent fetching two keys" width="420">
@@ -62,6 +62,18 @@ minus damage and early death. The exact weights are hidden.
 ---
 
 ## What DoomForge does
+
+> **Phase 5 (current): Atlas-E, one network.** The shipped agent is a single
+> 2.0 M-parameter policy with a corrected ego-motion map, read as two
+> heading-up crops, trained by BC and then parallel PPO with an asymmetric
+> critic. It replaces the Phase-3/4 hybrid (three networks, a router, a reflex
+> and a compass) and beats it on validation by **+1.26** proxy (95% CI
+> +0.62…+1.93) with no category regression. Details:
+> [`docs/ARCHITECTURE.md` §6](docs/ARCHITECTURE.md#6-atlas-e-phase-5-shipped),
+> results: [`docs/RESULTS.md` Phase 5](docs/RESULTS.md#phase-5--atlas-e-one-network-fixed-odometry-scaled-ppo).
+> The diagram below is the Phase-3/4 design; Atlas-E keeps the same encoders,
+> GRU and heads, swaps the map for the 16×32×32 ego map, and drops the router
+> and reflex.
 
 Module-by-module reference: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -210,6 +222,32 @@ weights are hidden.
 
 ## Results
 
+### Phase 5: Atlas-E (shipped)
+
+Full validation split, 136 episodes (10 maps × 14 categories):
+
+| Category | Phase-4 hybrid | **Atlas-E** |
+|---|---:|---:|
+| C0 sanity | 100% | 100% |
+| C1 duel | 30% | **90%** |
+| C2 arena | 70% | **80%** |
+| C3 corridor door | 100% | 100% |
+| C4 room door | 40% | **60%** |
+| C5 key → lock | 100% | 100% |
+| C6 two keys | 100% | 100% |
+| C8 backtrack | 40% | **100%** |
+| C7, C9–C13 | 0% | 0% |
+| **Tier-weighted proxy** | +6.19 | **+7.45** (CI +6.96…+7.97) |
+| Held-out **test** (140 eps) | +6.11 | **+7.02** (paired +0.91, CI +0.04…+1.76) |
+
+What changed: dead-reckoning bugs fixed (500-step drift 431 → 31 units,
+heading 25° → 0.02°), heading-up two-scale map, a rewritten PPO (bootstrapped
+GAE, asymmetric critic, 54 parallel envs, 1,966 train maps), and seeded
+sampling instead of argmax. Exploration-heavy categories remain the open
+problem.
+
+### Phase 3/4 history
+
 > Proxy numbers from `training/suite` (70 episodes, held-out seeds 10 000+) and
 > `training/bench.py` (seeds 30 000+, Freedoom MAP23–32). The official scorer is
 > hidden; these are not claimed as leaderboard scores.
@@ -272,8 +310,8 @@ are in [`PLAN.md`](PLAN.md).
 ✓ requirements.txt: no extra packages
 ✓ DoomAgent interface: __init__, reset, act
 ✓ Initialization: 0.4 s (limit 60 s)
-✓ Episode on 'two_rooms.wad:MAP01': 195 steps, exit reached
-✓ Step latency: p50 1.6 ms, p99 2.2 ms, max 6 ms (limit 5 s/act)
+✓ Episode on 'two_rooms.wad:MAP01': 201 steps, exit reached
+✓ Step latency: p50 1.6 ms, p99 2.0 ms, max 3 ms (limit 5 s/act)
 ! CPU limit: not pinnable on macOS (Linux-only check)
 ! Peak RAM: not measurable on macOS (needs /proc)
 PASSED
@@ -339,10 +377,21 @@ uv run python -m training.suite.compare --baseline <baseline_run> --candidate <c
 
 # 7. PPO fine-tune (suite curriculum)
 uv run python -m training.ppo --init training/runs/bc_v5/ckpt.pt --suite --updates 80
+
+# Phase 5 (Atlas-E): ego maps for the demos, BC, parallel PPO
+uv run python -m training.suite.generate --split train --n 150
+uv run python -m training.egomaps --data training/data/demos_v2_nav,training/data/demos_v3_key,...
+uv run python -m training.bc --arch ego --out training/runs/bc_ego1 --epochs 5 --batch 16 \
+    --drill-repeat 2 --repeat keychain=2,backtrack=2,C4=2 --data <13 demo dirs>
+uv run python -m training.ppo2 --init training/runs/bc_ego1/ckpt.pt --out training/runs/ppo_ego1 \
+    --workers 9 --envs-per-worker 6 --minibatch-windows 72
+uv run python -m training.suite.run --agent --primary training/runs/ppo_ego1/ckpt_u0050.pt \
+    --combat none --split val --per-category 10 --workers 8 --out training/runs/suite/valfull_cand
 ```
 
-The agent is `submission/agent.py`; weights are `submission/weights/doomforge.pt`
-(Atlas-G) and `submission/weights/combat.pt` (PPO-25), both Git LFS. The scorer mounts
+The agent is `submission/agent.py`; the weights are `submission/weights/doomforge.pt`
+(Atlas-E, Git LFS). The agent still loads Atlas-G/v1 checkpoints and the old hybrid
+when `combat.pt`/`specialist.pt` are present. The scorer mounts
 the repo read-only and gives the agent only the observation dictionary.
 
 ---
@@ -351,17 +400,19 @@ the repo read-only and gives the agent only the observation dictionary.
 
 ```
 submission/
-  agent.py          DoomAgent: load, reset, act (sanitised, argmax, CPU-safe)
-  model.py          Baseline A/B+ network
-  mapmem.py         deterministic ego-motion map (perception only)
-  weights/          Git LFS: Atlas-G + combat specialist
+  agent.py          DoomAgent: load, reset, act (sanitised, seeded sampling, CPU-safe)
+  model.py          Atlas-G / Atlas-E network
+  mapmem.py         ego-motion map: legacy MapBuilder + EgoMap (perception only)
+  weights/          Git LFS: Atlas-E
 training/
   maps/             procedural generator, drills, Freedoom preparation
   teacher/          privileged A*/frontier expert (TRAINING ONLY)
   collect.py        demonstrations + exit/key/door synthetic labels
   dagger.py         student-state relabelling
   bc.py             behaviour cloning
-  ppo.py            recurrent PPO
+  ppo.py            recurrent PPO (Phase 2-4, kept for reference)
+  ppo2.py           parallel PPO, asymmetric critic, geodesic shaping (Phase 5)
+  egomaps.py        ego-map regeneration for demo shards, bit packing
   evaluate.py       proxy leaderboard, sector coverage, replays
   coverage.py       sector lookup via sector_polygons()
   splits.py         frozen train/val/OOD/Freedoom splits
@@ -382,32 +433,30 @@ validate.py         official validator (untouched)
   `DoomAgent` contract are untouched.
 - No Dockerfile, no CI/CD, no network or engine access at inference, no writes outside
   `/tmp`.
-- Every action is a forward pass of trained parameters plus a deterministic,
-  observation-only anti-freeze reflex. The teacher, A*, BFS and door state machines
-  live only under `training/` and are never imported by `submission/`.
+- Every action is sampled from the trained network's own output distribution;
+  there is no router, reflex or hand-written steering in the shipped Atlas-E agent
+  (Phase 5 removed an `atan2` "compass" from the old reflex). The teacher, A*,
+  distance fields and door state machines live only under `training/` and are
+  never imported by `submission/`.
 - Weights use Git LFS; data shards and checkpoints from intermediate runs are gitignored;
   the repository is ≪ 1 GB.
-- Deterministic argmax; identical actions on repeat runs.
+- Reproducible: sampling uses a `torch.Generator` re-seeded on every `reset()`,
+  so identical observations give identical actions on repeat runs.
 
 ---
 
-## Phase 3 status and next
+## Status and next
 
-Shipped: the perception-routed hybrid (Atlas-G + PPO-25 + corridor-door
-specialist + reflex), val **+6.20**, test **+6.40**, validator PASS. Known gaps,
-in priority order:
+Shipped: Atlas-E (single network), val **+7.45** vs the Phase-4 hybrid's +6.19,
+validator PASS. Known gaps, in priority order:
 
-1. **C7/C9–C13** (exploration, ambush, scarce ammo, gauntlet, Freedoom, OOD) are still
-   0% exits. The next training round should add exploration demonstrations and
-   resource-aware combat; a full 30-map × 5-seed test is reserved for that candidate.
-2. **C4 room door** is 0% on validation and 60% on test; the corridor specialist does
-   not generalise to room-wall doors. A room-door specialist is the next small expert.
-3. **Learned router**: replace the enemy-visibility rule with a small gate trained on
-   the suite's category outcomes; keep the rule as the fallback and the gate must beat
-   it on the paired gate.
-4. **Scan matching / event tokens** only if the probes show drift or memory-wipe
-   sensitivity; the current fast suite does not.
-5. **Submission**: flip the repository to public and send the URL before the deadline.
+1. **C7/C9–C13** (exploration, ambush, scarce ammo, gauntlet, Freedoom, OOD) are
+   still 0% exits. Longer PPO improves their coverage and proxy (u250: C7 +4.1)
+   but forgets C5; the anti-forgetting run (`ppo_ego2`: anchor to the promoted
+   policy, rehearsal floor, idle penalty) is the next candidate.
+2. **Throughput**: PPO runs at 450–850 steps/s; exploration needs far more
+   samples than the 1.8M used so far.
+3. **Submission**: flip the repository to public and send the URL before the deadline.
 
 <div align="center">
 <sub>Built during Yugaantar DevForge 2026. DOOM is a trademark of id Software; Freedoom is BSD-licensed.</sub>

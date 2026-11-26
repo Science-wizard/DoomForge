@@ -47,13 +47,17 @@ def shortest_path(wad: str, map_name: str, start: tuple[float, float], cache: di
         return None
 
 
-def _init_worker(ckpt: str, device: str, use_agent: bool = False) -> None:
+def _init_worker(ckpt: str, device: str, use_agent: bool = False, overrides: dict | None = None) -> None:
     global _WORKER_NET, _WORKER_AGENT, _WORKER_DEVICE
     import torch
     torch.set_num_threads(1)
     if use_agent:
         from types import SimpleNamespace
+        import submission.agent as agent_mod
         from submission.agent import DoomAgent
+        for name, val in (overrides or {}).items():
+            if val:
+                setattr(agent_mod, name, Path(val) if val != "none" else Path("/nonexistent"))
         _WORKER_AGENT = DoomAgent(None, SimpleNamespace(shape=(9,)), device)
         _WORKER_NET = None
     else:
@@ -95,7 +99,11 @@ def main() -> None:
     ap.add_argument("--allow-test", action="store_true")
     ap.add_argument("--agent", action="store_true", help="run submission/agent.py end-to-end")
     ap.add_argument("--no-spl", action="store_true")
+    ap.add_argument("--primary", default="", help="--agent: override weights/doomforge.pt")
+    ap.add_argument("--combat", default="", help="--agent: override weights/combat.pt ('none' to disable)")
+    ap.add_argument("--specialist", default="", help="--agent: override weights/specialist.pt ('none')")
     args = ap.parse_args()
+    overrides = {"PRIMARY": args.primary, "COMBAT": args.combat, "SPECIALIST": args.specialist}
 
     if not args.agent and not args.ckpt:
         raise SystemExit("--ckpt is required unless --agent is used")
@@ -148,7 +156,7 @@ def main() -> None:
     t0 = time.time()
     n_done = 0
     if args.workers <= 1 or len(tasks) <= args.workers:
-        _init_worker(args.ckpt, args.device, args.agent)
+        _init_worker(args.ckpt, args.device, args.agent, overrides)
         n, shard = _run_shard(tasks)
         with out.open("a") as f:
             for r in shard:
@@ -159,7 +167,7 @@ def main() -> None:
         k = max(1, math.ceil(len(tasks) / args.workers))
         chunks = [tasks[i:i + k] for i in range(0, len(tasks), k)]
         with mp.get_context("spawn").Pool(len(chunks), initializer=_init_worker,
-                                          initargs=(args.ckpt, args.device, args.agent)) as pool:
+                                          initargs=(args.ckpt, args.device, args.agent, overrides)) as pool:
             results = pool.map(_run_shard, chunks)
         with out.open("a") as f:
             for n, shard in results:

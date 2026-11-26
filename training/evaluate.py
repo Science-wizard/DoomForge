@@ -17,13 +17,13 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from submission.model import DoomNet
+from submission.model import DoomNet, build_from_state
 from submission.model_v1 import DoomNet as DoomNetV1
 from training.coverage import SectorTracker
 from training.maps.gen_wad import generate_map
 from training.maps.drills import generate_drill
 from training.obs import flatten_obs, stack_obs, step_prev
-from submission.mapmem import MapBuilder
+from submission.mapmem import EgoMap, MapBuilder
 from training.splits import FREEDOOM_EVAL
 
 DEFAULT_WEIGHTS = {
@@ -48,7 +48,7 @@ class Runner:
         self.prev = None
         self.turn_held = 0
         self.use_last = 0
-        self.map = MapBuilder()
+        self.map = EgoMap() if getattr(net, "arch", "atlas") == "ego" else MapBuilder(legacy=True)
 
     def reset(self) -> None:
         self.h = None
@@ -202,9 +202,11 @@ def run_agent_episode(net: DoomNet, wad: str, map_name: str = "MAP01", device: s
 def load_net(path: str | Path, device: str = "cpu"):
     ckpt = torch.load(path, map_location=device)
     sd = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
-    cls = DoomNet if "goal_head.net.0.weight" in sd else DoomNetV1
-    net = cls(hidden=ckpt.get("config", {}).get("hidden", 384) if isinstance(ckpt, dict) else 384)
-    net.load_state_dict(sd)
+    if "goal_head.net.0.weight" in sd:
+        net = build_from_state(sd, ckpt.get("config", {}) if isinstance(ckpt, dict) else {})
+    else:
+        net = DoomNetV1(hidden=ckpt.get("config", {}).get("hidden", 384) if isinstance(ckpt, dict) else 384)
+        net.load_state_dict(sd)
     net.to(device).eval()
     return net
 

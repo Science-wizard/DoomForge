@@ -61,20 +61,18 @@ It checks:
    (`OMP_NUM_THREADS=1` etc.), as at evaluation.
 5. Peak RAM (≤ 8 GB) and peak GPU memory (≤ 2 GB) are within the [per-agent limits](EVALUATION.md#hardware).
 
-## Final artifact (Phase 3)
+## Final artifact (Phase 5)
 
-- `submission/weights/doomforge.pt` — Atlas-G v1 (1.87 M parameters, goal head +
-  frontier map). Navigation, exploration, keys and doors.
-- `submission/weights/combat.pt` — frozen Phase-2 PPO-25 (1.81 M parameters).
-  Selected whenever an enemy is visible; both nets see every observation.
-- `submission/weights/specialist.pt` — corridor-door expert (1.87 M), selected
-  only behind the conservative narrow-corridor gate described in
-  `docs/ARCHITECTURE.md` §5.5.
-- `submission/agent.py` — loads both, routes with a 16-decision enemy-visibility
-  hysteresis, and applies an observation-only anti-freeze reflex outside combat.
-- `submission/model_v1.py` — the v1 network definition needed to deserialize the
-  combat checkpoint.
+- `submission/weights/doomforge.pt`: Atlas-E (2.00 M acting parameters; the
+  checkpoint also stores the training-only privileged critic, which is never
+  evaluated). Config: `arch=ego`, `temperature=1.0`, `route_combat=false`.
+- `submission/agent.py`: sanitises observations, updates the ego map, samples
+  the six factorised heads with a generator seeded on every `reset()`.
+- `submission/mapmem.py`: `EgoMap` (corrected odometry, heading-up two-scale
+  crop) and the legacy `MapBuilder(legacy=True)` used only by old checkpoints.
+- `submission/model.py`, `submission/model_v1.py`: network definitions.
 
-If only `doomforge.pt` is present the agent runs single-model; if only a v1
-checkpoint is present it also runs single-model. The hybrid path is optional and
-fails back safely. Validator: PASS, p50 1.7 ms / p99 2.0 ms on one CPU thread.
+The Phase-4 `combat.pt` and `specialist.pt` were removed from `submission/`
+(recoverable from git history). If they are restored next to an Atlas-G
+`doomforge.pt`, the agent runs the old hybrid unchanged. Validator: PASS,
+p50 2.2 ms / p99 4.8 ms.

@@ -312,3 +312,92 @@ resource, gauntlet, Freedoom transfer, OOD).
 - Full-grid frontier BFS with door USE: 0/5 C7.
 - Teacher door reflex fixed (center rays, path-gated): C7 teacher 6/10, still
   short of reliable labels; C9/C10/C12 teacher remains 0/3.
+
+---
+
+# Phase 5 — Atlas-E: one network, fixed odometry, scaled PPO
+
+Phase 5 replaced the three-network hybrid (Atlas-G + PPO-25 + door specialist +
+reflex + an undocumented compass) with a single Atlas-E network. Design:
+[`ARCHITECTURE.md` §6](ARCHITECTURE.md#6-atlas-e-phase-5-shipped).
+
+## What was wrong (measured)
+
+| Problem | Evidence | Fix |
+|---|---|---|
+| Map heading drift | 33° error after 100 steps: turn reversals keep Doom's accelerated turn rate | turn-run counts either direction (0.02° after 500 steps) |
+| Map position drift | 431 units after 500 steps: mean-velocity integration; momentum reported while pinned to walls | per-tic friction model + ray-distance clip (31 units) |
+| PPO had no bootstrap | GAE used `V=0` after every 128-step rollout and treated time-outs as deaths | bootstrap from the next observation; time-left in the critic |
+| PPO "return" was meaningless | `mean_return` was a cumulative sum that never reset (PPO v2's "1.4 → 8.5") | per-episode logging, per-category exit rates |
+| PPO pose off by one | map integrated the action from two steps earlier | integrate the executed action |
+| PPO scale | 8 sequential envs, ~50 steps/s, ≤41k steps per run | 54 envs in 9 processes, double-buffered, 450–850 steps/s, 1.8M steps |
+| Compass reflex | `atan2` steering toward remembered doors/frontiers (RULES §1 risk) | removed; val proxy unchanged (+6.13 vs +6.20, CI spans 0) |
+| 20 train maps/category | PPO would memorise | 150/category (1,966 maps), 0 hash overlap with val/test |
+
+## Training
+
+1. **BC** (`bc_ego1`): 436k teacher steps from 13 datasets (nav, arenas, doors,
+   key, key-chain, backtrack, C3/C4, room-door, tier-2), ego maps regenerated
+   offline by replaying the stored observations (`training/egomaps.py`), 5 epochs,
+   val loss 0.63 (Atlas-G BC v5: 0.99).
+2. **PPO** (`training/ppo2.py`, `ppo_ego1`): asymmetric privileged critic,
+   geodesic progress shaping to the current objective, proxy rewards,
+   learning-progress curriculum over the 14 train categories + 15% fresh
+   generated maps, exact KL anchor to the BC policy (0.3 → 0.02).
+
+## Validation (full val split: 136 episodes, 10 maps/category, 1 seed)
+
+| Category | Shipped Phase-4 hybrid | **Atlas-E PPO u50** | PPO u250 | 5-ckpt soup |
+|---|---:|---:|---:|---:|
+| C0 sanity | 100% | 100% | 100% | 100% |
+| C1 duel | 30% | **90%** | 100% | 100% |
+| C2 arena | 70% | **80%** | 70% | 90% |
+| C3 corridor door | 100% | 100% | 100% | 100% |
+| C4 room door | 40% | **60%** | 100% | 70% |
+| C5 key → lock | 100% | 100% | **20%** | 70% |
+| C6 two keys | 100% | 100% | 100% | 100% |
+| C8 backtrack | 40% | **100%** | 100% | 100% |
+| C7, C9–C13 | 0% | 0% | 0% | 0% |
+| **Tier-weighted proxy** | +6.19 | **+7.45** | +7.37 | +7.57 |
+| Paired Δ vs hybrid (95% CI) | — | **+1.26 (+0.62…+1.93)** | +1.18 (+0.13…+2.23) | +1.37 (+0.50…+2.22) |
+| Gate | — | **PROMOTE** | HOLD (C5 −80) | HOLD (C5 −30) |
+
+Atlas-E u50 is the only candidate with a positive CI **and** no category
+regression, so it ships. The later checkpoints learn more exploration (u250: C7
+proxy +4.1, C13 +2.1, C4 100%) but forget C5: they walk to the locked door,
+press USE and idle instead of detouring to the key alcove.
+
+**Sampling vs argmax.** The same u50 weights score +6.38 (fast val) under argmax
+and +7.80 sampled at temperature 1. Argmax turns near-ties into freezes (90%+
+no-op episodes); seeded sampling keeps every run reproducible.
+
+**Hybrid vs single.** Routing Atlas-E through the old PPO-25 combat expert
+*lowers* the score (C2 80% → 20% on fast val): the single network now fights
+better than the specialist it replaced.
+
+## Robustness and held-out test
+
+- **Two engine seeds** (272 val episodes): Atlas-E u50 +7.37 vs hybrid +6.11,
+  paired +1.26 (CI +0.63…+1.92), PROMOTE. The `ppo_ego2` continuation u50
+  (anchored to u50, rehearsal floor 0.6, idle penalty) scores +7.50 with the
+  first C7 exits (10%), C4 90% and C2 85%, but loses keys (C5 80%, C6 70%) and is
+  only +0.14 over u50 (CI −0.60…+0.81), so it is the documented alternate.
+- **Test split** (one logged look, 140 episodes, `test_atlas_e` vs
+  `test_hybrid_p4` on identical maps): **+7.02 vs +6.11, paired +0.91
+  (CI +0.04…+1.76), PROMOTE.** C1 20→100%, C8 30→100%, C4 30→50%; C5 100→70%
+  and C0 100→90% (not significant at n=10); C7/C9–C13 0%.
+
+## Official validator
+
+PASS: init 0.4 s, dry-run map exited in 201 steps, p50 1.6 ms / p99 2.0 ms per
+decision (2.2 / 4.8 ms under training load), contract stress test
+(NaN/inf/mask corruption, determinism) PASS.
+
+## Still failing
+
+C7 exploration and C9–C13 (ambush, scarce ammo, gauntlet, Freedoom, OOD) are
+still 0% exits. Coverage and proxy on them improve with more PPO (u250), at the
+cost of C5. Trajectory plots show the agent covering only 2–3 small rooms in
+1,050 steps on C7: it idles and misaligns with door tunnels. Next steps:
+anti-forgetting PPO (anchor to the promoted policy, rehearsal floor, idle
+penalty; `ppo_ego2`), then longer runs at higher throughput.
