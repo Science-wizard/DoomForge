@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import math
 import time
 from pathlib import Path
@@ -29,11 +30,16 @@ from submission.model import (AUX_DAMAGE, AUX_DOOR, AUX_ENEMY, AUX_EXIT_BEARING,
 
 
 def load_episodes(data_dir: str | Path, min_steps: int = 8) -> list[dict]:
-    data_dir = Path(data_dir)
+    dirs = [Path(p) for p in str(data_dir).split(",") if p.strip()]
     eps = []
-    for line in (data_dir / "manifest.jsonl").read_text().splitlines():
-        row = json.loads(line)
-        path = data_dir / row["file"]
+    rows = []
+    for d in dirs:
+        for line in (d / "manifest.jsonl").read_text().splitlines():
+            row = json.loads(line)
+            row["_dir"] = str(d)
+            rows.append(row)
+    for row in rows:
+        path = Path(row["_dir"]) / row["file"]
         if not path.exists():
             continue
         with np.load(path) as z:
@@ -153,10 +159,15 @@ def batch_loss(net: DoomNet, batch: dict) -> tuple[torch.Tensor, dict]:
     m = batch["mask"]
     denom = m.sum().clamp(min=1.0)
     ce = 0.0
+    front = batch["rays_hit"][..., [0, 1, 2, 62, 63]]
+    door_ahead = ((front == 2) | (front == 3)).any(-1).float()
     for j, part in enumerate(torch.split(logits, HEAD_SIZES, dim=-1)):
         ce_j = F.cross_entropy(part.reshape(-1, part.shape[-1]),
                                batch["heads"][..., j].reshape(-1), reduction="none")
-        ce = ce + (ce_j * m.reshape(-1)).sum() / denom
+        w = m.reshape(-1)
+        if j == 4:  # USE: rare positives, critical for doors
+            w = w * (1.0 + 10.0 * door_ahead.reshape(-1) + 5.0 * batch["heads"][..., 4].reshape(-1).float())
+        ce = ce + (ce_j * w).sum() / w.sum().clamp(min=1.0)
 
     def bce(idx, target, pos_weight=1.0):
         logit = aux[..., idx] if isinstance(idx, int) else aux[..., idx]
@@ -215,12 +226,18 @@ def main() -> None:
     ap.add_argument("--resume", default="")
     ap.add_argument("--window", type=int, default=128)
     ap.add_argument("--stride", type=int, default=64)
+    ap.add_argument("--drill-repeat", type=int, default=3)
     args = ap.parse_args()
 
+    torch.set_num_threads(min(8, os.cpu_count() or 4))
     device = args.device
     if device == "auto":
         device = "mps" if torch.backends.mps.is_available() else "cpu"
-    eps = window_episodes(load_episodes(args.data), args.window, args.stride)
+    raw = load_episodes(args.data)
+    if args.drill_repeat > 1:
+        drills = [e for e in raw if e.get("meta", {}).get("tag") == "drill"]
+        raw = raw + drills * (args.drill_repeat - 1)
+    eps = window_episodes(raw, args.window, args.stride)
     if not eps:
         raise SystemExit(f"no episodes in {args.data}")
     rng = np.random.default_rng(0)
@@ -232,7 +249,8 @@ def main() -> None:
     net = DoomNet().to(device)
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
     if args.resume:
-        net.load_state_dict(torch.load(args.resume, map_location=device))
+        ckpt = torch.load(args.resume, map_location=device)
+        net.load_state_dict(ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt)
         print("resumed", args.resume)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

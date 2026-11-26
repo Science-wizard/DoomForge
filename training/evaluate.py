@@ -20,6 +20,7 @@ import torch
 from submission.model import DoomNet
 from training.coverage import SectorTracker
 from training.maps.gen_wad import generate_map
+from training.maps.drills import generate_drill
 from training.obs import flatten_obs, stack_obs, step_prev
 from submission.mapmem import MapBuilder
 from training.splits import FREEDOOM_EVAL
@@ -170,6 +171,15 @@ def suite_maps(suite: str, n: int) -> list[tuple[str, str, str]]:
             for k in range(n):
                 spec = generate_map(10_000 + k + tier * 100, tier, tmp)
                 out.append((str(spec.path), "MAP01", f"gen_t{tier}"))
+    if suite in ("drills", "all"):
+        tmpd = "training/data/eval_maps"
+        specs = [("drill_1", dict(n_doors=1, key=False)),
+                 ("drill_key", dict(n_doors=1, key=True)),
+                 ("drill_2", dict(n_doors=2, key=False))]
+        for k in range(n):
+            for i, (label, kw) in enumerate(specs):
+                spec = generate_drill(9000 + k * 10 + i, tmpd, **kw)
+                out.append((str(spec.path), spec.map_name, label))
     if suite in ("freedoom_eval", "all"):
         for name in FREEDOOM_EVAL:
             p = _P(f"maps/freedoom/{name}.wad")
@@ -185,7 +195,7 @@ def suite_maps(suite: str, n: int) -> list[tuple[str, str, str]]:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ckpt", default="training/runs/bc_nav/ckpt.pt")
-    ap.add_argument("--suite", default="gen_val", choices=("gen_val", "freedoom_eval", "ood", "all"))
+    ap.add_argument("--suite", default="gen_val", choices=("gen_val", "freedoom_eval", "ood", "drills", "all"))
     ap.add_argument("--episodes", type=int, default=4, help="maps per tier for generated suites")
     ap.add_argument("--seeds", type=int, default=1, help="engine seeds per map")
     ap.add_argument("--device", default="cpu")

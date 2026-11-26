@@ -43,7 +43,7 @@
 <div class="kicker">Yugaantar DevForge · Track 1 · Can It Play DOOM?</div>
 <h1>DoomForge</h1>
 <p class="sub">A 1.56 M-parameter multimodal agent that <b>sees exits</b>, remembers doors, and decides in
-0.6 ms on one CPU thread — trained by privileged expert seeding and PPO on a generated four-tier curriculum.</p>
+1.0 ms on one CPU thread — trained by privileged expert seeding and PPO on a generated four-tier curriculum.</p>
 
 <h2>Unique selling proposition</h2>
 <p>Two failure modes dominate zero-shot DOOM: the agent cannot recognise the exit, and it cannot remember a
@@ -56,8 +56,8 @@ navigation, doors and combat; behaviour cloning gives a strong prior; PPO fine-t
 The result fits the 1-CPU, 40 ms/decision sandbox with a >60× latency margin.</p>
 
 <div class="kpis">
-  <div class="kpi"><div class="lbl">Parameters</div><div class="stat">1.56 M</div></div>
-  <div class="kpi"><div class="lbl">CPU decision (p50)</div><div class="stat">0.6 ms</div></div>
+  <div class="kpi"><div class="lbl">Parameters</div><div class="stat">1.81 M</div></div>
+  <div class="kpi"><div class="lbl">CPU decision (p50)</div><div class="stat">1.0 ms</div></div>
   <div class="kpi"><div class="lbl">Validator</div><div class="stat">PASS</div></div>
   <div class="kpi"><div class="lbl">Init</div><div class="stat">0.6 s</div></div>
 </div>
@@ -68,7 +68,9 @@ The result fits the 1-CPU, 40 ms/decision sandbox with a >60× latency margin.</
   vitals 17 ─► MLP ────────────────────────────────────►  64 ─┤
   RGB 30×40×3 ─► Conv2d ×3 (stride 2) ─────────────────► 128 ─┤
   prev action 12 ─► MLP ──────────────────────────────►  32 ─┤
-                                                              ├─ 480 → GRU(384) → 384
+  map 5×32×32 ─► Conv2d ×3 ────────────────────────────► 128 ─┤
+  pose 6 ─► MLP ───────────────────────────────────────►  32 ─┤
+                                                              ├─ 640 → GRU(384) → 384
                                                               │
         ┌──────────────────────┬──────────────────────────────┼─────────────────────┐
         ▼                      ▼                              ▼                     ▼
@@ -88,16 +90,15 @@ buttons, allowed as action masking.</li>
 </ul>
 </div>
 <div class="panel">
-<h3>Where the memory goes (B+ lite)</h3>
+<h3>Memory (B+ minimal, shipped)</h3>
 <ul>
-<li>Exact heading integration from the measured turn table; translation from ego velocity; optional
-translation-only scan match (±16 units, ~81 candidates, &lt;0.5 ms).</li>
-<li>64-unit allocentric map, 96×96, channels free/wall/door/locked/visited/frontier/exit; two egocentric
-32×32 crops feed a small CNN.</li>
-<li>≤64 event tokens for locked doors, keys and exit cues, re-projected every step and read by GRU attention.
-This is the long-horizon fix and the live-demo overlay.</li>
-<li>Deterministic writer = perception; no A*/BFS/planner at inference. Promoted only if it beats A on held-out
-proxy score.</li>
+<li>Deterministic <code>MapBuilder</code>: heading from the measured turn table, translation from ego
+velocity, rays/items projected into a 64×64 allocentric grid at 96 units/cell; a 32×32 crop and a
+6-value pose feed the policy.</li>
+<li>Correcting the turn table and velocity timing cut heading drift from 63° to 16° and position
+error from 907 to 361 units over 250 steps.</li>
+<li>Event tokens, translation-only scan matching and a 96×96/64-unit map are the next ablation;
+promote only if held-out proxy improves.</li>
 </ul>
 </div>
 </div>
@@ -145,14 +146,14 @@ optimises kills minus damage. Attention over up to 32 entities gives a permutati
 <h3>Proxy leaderboard (held-out seeds)</h3>
 <table>
 <tr><th>Split</th><th>Skill</th><th class="num">Exit</th><th class="num">Keys</th><th class="num">Proxy</th></tr>
-<tr><td>gen_val t1</td><td>Combat</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
-<tr><td>gen_val t2</td><td>Exploration</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
-<tr><td>gen_val t3</td><td>Key → lock</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
-<tr><td>gen_val t4</td><td>Gauntlet</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
-<tr><td>Freedoom 23–32</td><td>Unseen hand-made</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+<tr><td>gen_val t1</td><td>Combat</td><td class="num">2/2</td><td class="num">0</td><td class="num">+11.4</td></tr>
+<tr><td>gen_val t2</td><td>Exploration</td><td class="num">0/2</td><td class="num">0</td><td class="num">−1.9</td></tr>
+<tr><td>gen_val t3</td><td>Key → lock</td><td class="num">0/2</td><td class="num">0</td><td class="num">0.0</td></tr>
+<tr><td>gen_val t4</td><td>Gauntlet</td><td class="num">0/2</td><td class="num">0</td><td class="num">−2.2</td></tr>
+<tr><td>Door drills*</td><td>1-door / key</td><td class="num">4/4</td><td class="num">1</td><td class="num">+11.7</td></tr>
+<tr><td>Freedoom 23–32</td><td>Unseen hand-made</td><td class="num">not run</td><td class="num">—</td><td class="num">—</td></tr>
 </table>
-<p class="small">Generated by <code>training/evaluate.py</code> from the shipped checkpoint; the README embeds the
-same numbers and the training curves.</p>
+<p class="small">Shipped checkpoint: tier-1 model (2/2 exits, 4 kills, 100% coverage). *Door drills come from the separate drill-only branch; it learned doors but forgot arena exits — the documented Phase-2 forgetting problem. Generated by <code>training/evaluate.py</code>; the README embeds the same numbers and curves.</p>
 
 <h3>Failure modes and mitigations</h3>
 <ul>
@@ -184,16 +185,16 @@ the <code>DoomAgent</code> contract are untouched; no Dockerfile; no CI/CD.</li>
 under <code>training/</code> and are never imported by <code>submission/</code>.</li>
 <li>Weights in <code>submission/weights/</code> via Git LFS; repository ≪ 1 GB; no data shards committed.</li>
 <li>Deterministic argmax; explicit recurrent state; no network, engine or disk access at inference.</li>
-<li>Validator: init 0.6 s (limit 60 s), p50 0.6 ms / p99 0.7 ms (limit 5 s), one dry-run episode clean.</li>
+<li>Validator: init 0.4 s (limit 60 s), p50 1.0 ms / p99 1.9 ms (limit 5 s), one dry-run episode clean.</li>
 </ul>
 </div>
 <div class="panel">
 <h3>Measured margins</h3>
 <table>
 <tr><th>Budget</th><th class="num">Limit</th><th class="num">Ours</th></tr>
-<tr><td>Init</td><td class="num">60 s</td><td class="num">0.6 s</td></tr>
-<tr><td>Per decision</td><td class="num">40 ms avg</td><td class="num">0.6 ms</td></tr>
-<tr><td>Any act()</td><td class="num">5 s</td><td class="num">0.7 ms</td></tr>
+<tr><td>Init</td><td class="num">60 s</td><td class="num">0.4 s</td></tr>
+<tr><td>Per decision</td><td class="num">40 ms avg</td><td class="num">1.0 ms</td></tr>
+<tr><td>Any act()</td><td class="num">5 s</td><td class="num">1.9 ms</td></tr>
 <tr><td>RAM</td><td class="num">8 GB</td><td class="num">&lt; 1 GB</td></tr>
 <tr><td>VRAM</td><td class="num">2 GB</td><td class="num">&lt; 0.1 GB (CPU path)</td></tr>
 <tr><td>Repo</td><td class="num">1 GB</td><td class="num">&lt; 30 MB</td></tr>

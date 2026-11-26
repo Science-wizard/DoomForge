@@ -132,6 +132,53 @@ return requirement.
 | Validator latency | p50 0.8 ms, p99 1.0 ms (limit 5 s) |
 | Init | 0.4–0.6 s (limit 60 s) |
 
+### Door demonstrations (the missing skill)
+
+The first map-aware BC model was trained on **zero closed doors** (navigation maps
+were door-free by design; arenas have no doors). Its USE head therefore learned
+"never use", and every tier-2 map failed at the first door. Fixed by collecting
+isolated drills:
+
+| Drill | Episodes | Exits | Wall time |
+|---|---:|---:|---:|
+| 1 door, no key | 120 | 120 | 24 s |
+| 1 door + key + locked door | 120 | 120 | 24 s |
+| 2 doors, no key | 120 | 120 | 28 s |
+
+These are cheap, reliable USE/key/lock demonstrations. They are mixed into the BC
+dataset with a 3× repeat so the USE and key-colour heads see enough positives.
+
+### First held-out evaluation (map-aware BC, epoch 0, no door data)
+
+| Split | Exit | Kills | Sector coverage | Proxy |
+|---|---:|---:|---:|---:|
+| Generated tier 1 (arena) | **2/2** | 4 | 100% | **11.4** |
+| Generated tier 2 | 0/2 | 1 | 5.9% | −1.9 |
+| Generated tier 3 | 0/2 | 0 | 3.6% | 0.0 |
+| Generated tier 4 | 0/2 | 0 | 2.1% | −2.2 |
+
+Tier 1 exits in 87–112 steps; tiers 2–4 stall at the first door/room. This is the
+concrete evidence for adding door demonstrations and PPO recovery.
+
+### Door fine-tune and catastrophic forgetting
+
+Fine-tuning the base checkpoint on the 360 drills (weighted USE loss) learned the door
+skill in two epochs:
+
+| Eval | Exit | Steps | Notes |
+|---|---:|---:|---|
+| 1 door | 2/2 | 65 | perfect |
+| 1 door + key + locked door | 2/2 | 65 | key pickup + lock |
+| 2 doors | 0/2 | 1050 | gets through the first, stalls at the second |
+
+But the drill-only run **forgot the arena skill**: tier 1 dropped from 2/2 to 0/2 and
+the tier-1 proxy went from +11.4 to −1.2. This is textbook catastrophic forgetting; the
+plan's “keep 20–30% of earlier stages in every batch” rule was violated.
+
+**Fix in progress:** a balanced fine-tune from the tier-1 checkpoint on
+`demos_all + demos_drills` (drill repeat 1, weighted USE loss, 2 epochs). The final
+checkpoint is selected by held-out proxy score, not by training loss.
+
 ### Next experiment
 
 1. BC with maps on the same 100,921 transitions. Measure teacher-forced turn accuracy

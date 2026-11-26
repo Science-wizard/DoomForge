@@ -195,6 +195,8 @@ def main() -> None:
     ap.add_argument("--no-monsters", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--max-steps", type=int, default=1200)
+    ap.add_argument("--drill-doors", type=int, default=2)
+    ap.add_argument("--drill-key", action="store_true")
     args = ap.parse_args()
 
     out = Path(args.out)
@@ -214,7 +216,7 @@ def main() -> None:
         if src == "drill":
             from training.maps.drills import generate_drill
             spec = generate_drill(args.seed * 100000 + i, "training/data/maps",
-                                  n_doors=2, key=bool(i % 2))
+                                  n_doors=args.drill_doors, key=args.drill_key)
             wad, map_name, tag = str(spec.path), spec.map_name, "drill"
         elif src == "gen":
             tier = args.tier or int(rng.integers(2, 5))

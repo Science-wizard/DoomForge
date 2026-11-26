@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![ViZDoom](https://img.shields.io/badge/ViZDoom-1.3.3-5c2d91?style=flat-square)](https://vizdoom.farama.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.15-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![Latency](https://img.shields.io/badge/decision-0.8%20ms%20p50-0969da?style=flat-square)](#validation)
+[![Latency](https://img.shields.io/badge/decision-1.0%20ms%20p50-0969da?style=flat-square)](#validation)
 [![Repo size](https://img.shields.io/badge/repo-<30%20MB-6f42c1?style=flat-square)](#repository)
 
 <img src="docs/assets/doomforge.gif" alt="DoomForge agent replay" width="420">
@@ -157,11 +157,17 @@ weights are hidden.
 
 | Split | Exit | Keys | Unique sectors | Proxy |
 |---|---:|---:|---:|---:|
-| Generated tier 1 (combat) | — | — | — | — |
-| Generated tier 2 (exploration) | — | — | — | — |
-| Generated tier 3 (key → lock) | — | — | — | — |
-| Generated tier 4 (gauntlet) | — | — | — | — |
-| Freedoom MAP23–32 (unseen) | — | — | — | — |
+| Generated tier 1 (combat) | **2/2** | 0 | 100% | **+11.4** |
+| Generated tier 2 (exploration) | 0/2 | 0 | 5.9% | −1.9 |
+| Generated tier 3 (key → lock) | 0/2 | 0 | 3.6% | 0.0 |
+| Generated tier 4 (gauntlet) | 0/2 | 0 | 2.1% | −2.2 |
+| Freedoom MAP23–32 (unseen) | not run | — | — | — |
+| Door drills *(research branch, not shipped)* | 4/4 | 1 | 100% | +11.7 |
+
+The shipped checkpoint is the **tier-1 model** (`bc_map2` epoch 0). A separate
+drill-only fine-tune (`bc_use`) learned doors and keys (4/4 on 1-door and key drills)
+but catastrophically forgot arena exits; the balanced fine-tune (`bc_mix`) did neither.
+This is the concrete Phase-2 problem: replay/distillation or PPO must retain both.
 
 <p align="center">
   <img src="docs/assets/training.png" alt="Training curves" width="48%">
@@ -178,7 +184,13 @@ weights are hidden.
 - **Odometry matters.** The first map version collapsed the measured turn table to a
   constant 14.06°/decision and integrated velocity one step late; correcting both cut
   position error from 907 to 361 units and heading error from 63° to 16°.
-- **The validator is not the score.** It passes with p50 0.8 ms; skill is the open problem.
+- **Tier 1 works.** The first map-aware checkpoint exits **2/2** held-out arenas, with
+  four kills in one, at 100% sector coverage.
+- **Doors were the missing data, not the missing model.** The first BC set contained
+  zero closed doors, so the USE head learned “never use” and every tier-2 run stopped at
+  the first door. 360/360 reliable drill episodes (1 door, door+key, two doors) were
+  added; the USE head is now weighted 10× on door-adjacent frames.
+- **The validator is not the score.** It passes with p50 1.0 ms; skill is the open problem.
 
 The full lab log is in [`progress.md`](progress.md); the 24-hour plan and gates are in
 [`PLAN.md`](PLAN.md).
@@ -193,14 +205,14 @@ The full lab log is in [`progress.md`](progress.md); the 24-hour plan and gates 
 ✓ DoomAgent interface: __init__, reset, act
 ✓ Initialization: 0.4 s (limit 60 s)
 ✓ Episode on 'two_rooms.wad:MAP01': 525 steps, tick cap
-✓ Step latency: p50 0.8 ms, p99 1.0 ms, max 2 ms (limit 5 s/act)
+✓ Step latency: p50 1.0 ms, p99 1.9 ms, max 3 ms (limit 5 s/act)
 ! CPU limit: not pinnable on macOS (Linux-only check)
 ! Peak RAM: not measurable on macOS (needs /proc)
 PASSED
 ```
 
 Official limits: 2 GB VRAM, 8 GB RAM, 1 CPU thread, 60 s init, 10 s reset, 10 s first
-act, 5 s any act, 40 ms average compute per decision. Our margins are >60× on latency
+act, 5 s any act, 40 ms average compute per decision. Our margins are >40× on latency
 and >8× on RAM (estimated <1 GB).
 
 ---
