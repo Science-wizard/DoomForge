@@ -50,7 +50,11 @@ class NavGrid:
         if len(p1):
             door_secs = np.array(sorted(md.info.door_sectors), dtype=np.int64)
             if len(door_secs):
-                door_lines = np.isin(md.front, door_secs) | np.isin(md.back, door_secs)
+                # Only the faces between a door and a real neighbour are passable.
+                # The door's side/track walls (back == -1) stay blocking; treating
+                # them as open carved false shortcuts through walls.
+                door_lines = ((np.isin(md.front, door_secs) & (md.back >= 0)) |
+                              (np.isin(md.back, door_secs) & (md.front >= 0)))
         walls = ((md.back < 0) | md.blocking) & ~door_lines
         for i in np.flatnonzero(walls):
             self._raster_segment(blocked, p1[i], p2[i])

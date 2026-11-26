@@ -69,6 +69,8 @@ class Teacher:
     stuck_moves: int = 0
     last_move_pos: tuple[float, float] = (0.0, 0.0)
     stats: TeacherStats = field(default_factory=TeacherStats)
+    fallback_goal: tuple[float, float] | None = None
+    fallback_t: int = -9999
 
     def __post_init__(self):
         if self.grid is None:
@@ -93,6 +95,8 @@ class Teacher:
         self.stuck_moves = 0
         self.last_move_pos = start_xy if start_xy is not None else (0.0, 0.0)
         self.stats = TeacherStats()
+        self.fallback_goal = None
+        self.fallback_t = -9999
 
     # ------------------------------------------------------------------ planning
     def _key_held(self, keys: np.ndarray, lock: int) -> bool:
@@ -119,9 +123,8 @@ class Teacher:
         for sec, (cx, cy, lock) in self.grid.door_centres.items():
             if lock <= 0 or self._key_held(keys, lock):
                 continue
-            door_path = self.grid.path(pos, (cx, cy), keys, door_penalty=1.0)
-            if door_path is None:
-                continue
+            # The door centre can lie on the far side of the door, so a path to
+            # it is not required (and is impossible) before the key is held.
             for kx, ky, klock in self.md.key_positions():
                 if klock != lock:
                     continue
@@ -133,15 +136,25 @@ class Teacher:
             _, self.path, self.goal, self.goal_kind = options[0]
             return True
 
-        # 3. No exit found: explore the farthest reachable cell.
+        # 3. No exit found: explore the farthest reachable cell.  Reuse the
+        # previous fallback while it is still reachable; rescanning 40 A* goals
+        # every 24 steps dominates DAgger on the large tier-4 maps.
+        if self.fallback_goal is not None and self.step - self.fallback_t < 240:
+            p = self.grid.path(pos, self.fallback_goal, keys)
+            if p is not None:
+                self.path, self.goal, self.goal_kind = p, self.fallback_goal, "explore"
+                return True
+            self.fallback_goal = None
         free_ix, free_iy = np.nonzero(self.grid.free)
         if len(free_ix):
             cx, cy = self.grid.world_to_cell(*pos)
             d = (free_ix - cx) ** 2 + (free_iy - cy) ** 2
-            for k in np.argsort(d)[::-1][:40]:
+            for k in np.argsort(d)[::-1][:8]:
                 gx, gy = self.grid.cell_to_world(int(free_ix[k]), int(free_iy[k]))
                 p = self.grid.path(pos, (gx, gy), keys)
                 if p is not None:
+                    self.fallback_goal = (gx, gy)
+                    self.fallback_t = self.step
                     self.path, self.goal, self.goal_kind = p, (gx, gy), "explore"
                     return True
         return False

@@ -433,3 +433,117 @@ here (daemon off, image private); compensated by explicit latency/RAM budgets.
 6. **Promote A** by the hour-12 gate with LFS weights and a validator run.
 7. **B+ lite** only if it beats A on held-out proxy score.
 8. Brief PDF, visual README, private repo push, public flip at submission.
+
+---
+
+## Phase 3 — suite + Atlas-G (2026-11-26 evening)
+
+### Measured compute decision
+
+`mlx` was installed (0.32.5, Metal available) and benchmarked on the actual
+workloads rather than assumed:
+
+| workload | MLX GPU | PyTorch CPU (10 threads) | PyTorch MPS |
+|---|---:|---:|---:|
+| 2 M-param MLP, 256×512 fwd+bwd | **4.2 ms** | 11.2 ms | 11.3 ms |
+| DoomNet recurrent batch (16×128) | — | 3.50 s | **0.22 s** |
+
+Decision: **PyTorch MPS for training, all 10 CPU threads for environments and
+suite workers**. MLX wins only for stateless MLPs; the recurrent policy is 16×
+faster on MPS, so porting the training stack to MLX would slow it down.
+
+### Suite (suite-1)
+
+- 14 categories C0–C13, 4 splits, leakage-checked by WAD hash.
+- Category-specific generator seeds, acceptance filters (C6 exactly 2 keys/2
+  locks, C7 8–13 rooms, C8 detour geometry), facing starts for C0/C3/C1.
+- Disjoint Freedoom maps: train 1–16, val 17–22, test 23–32.
+- Parallel episode runner, tier-weighted proxy + stratified bootstrap CI, paired
+  promotion gate, probes (door angle, exit sign, colour, corruption,
+  determinism, memory wipe).
+- The suite drives training: PPO `--suite` samples the train split with the
+  30/50/20 mastered/current/hardest mix; DAgger `--source suite` labels the
+  failure states it exposes.
+
+First val baselines (136 maps, 1 seed):
+
+| checkpoint | weighted proxy | C0 | C1 | C2 | doors C3/C4 | C5/C6 | C12 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PPO-25 (shipped) | +0.466 | 0% | 10% | 80% | 0/0% | 0/0% | 0% |
+| BC v2 (goal head + frontier) | +0.793 (fast, 70 maps) | 100% | 40% | 20% | 0/0% | 0/0% | 0% |
+
+PPO-25's failure mode is now measurable: it circles the spawn room (path 40k
+units, coverage 3–4%) on generated maps. BC v2 fixes C0 and improves C1, but is
+still stuck on door/key categories and loses on the old tier-1 bench (2/12 vs
+PPO-25's 6/8), so it is not shippable. DAgger on suite maps is the next step.
+
+### Dead end: unbalanced DAgger poisons the policy
+
+191 DAgger episodes on suite maps were collected with `beta=0` (student rollout,
+teacher label). The student got stuck early on most maps, so the teacher's label
+for the rest of the episode was "turn", producing a 73% turn-label rate. BC v3
+(resumed from BC v2) collapsed into spinning: 0% exit on every category, spin
+fraction 99.8% on C0/C1/C5/C6/C8. Removed from the training set; DAgger needs
+teacher mixing and a cap on repeated stuck frames, or PPO's reward signal.
+
+### Teacher fixes that mattered
+
+1. `NavGrid` treated *all* lines touching a door sector as passable, including
+   the door's solid side tracks. That carved false paths through walls; A* led
+   the teacher into corridors that do not exist. Only door *faces* between two
+   real sectors are passable now.
+2. The teacher required a path *to the door centre* before fetching a key; the
+   centre is often on the far side of the locked door, so it never went for the
+   key. Removed that precondition; key reachability is checked directly.
+3. Frontier fallback rescanned 40 A* goals every replan and hung on tier-4
+   maps. It reuses one fallback goal for 240 steps and scans at most 8.
+4. The room generator's locked doors are usually optional: only 5/30 tier-4
+   maps required a key, 0/30 required two. C5/C6/C8 were rebuilt as drill
+   layouts with guaranteed cut-edge locks (teacher 3/3, 5/5, 3/3).
+
+### Atlas-G v1 + hybrid router (measured)
+
+The goal head + frontier channel + key/backtrack demos produced a model that is
+strong where PPO-25 is weak and vice versa:
+
+| val fast (70 maps) | PPO-25 | Atlas-G BC v5 | Hybrid (no reflex) |
+|---|---:|---:|---:|
+| weighted proxy | +1.18 | +3.07 | **+3.17** |
+| C0 sanity | 0% | 100% | 100% |
+| C1 duel | 10% | 0% | 20% |
+| C2 arena | 80% | 60% | 60% |
+| C3 door | 0% | 0% | 0% |
+| C4 room door | 0% | 20% | 20% |
+| C5 key/lock | 0% | 100% | 100% |
+| C6 two-key | 0% | 0% | 0% |
+| C8 backtrack | 0% | 20% | 20% |
+
+The router selects PPO-25 when an enemy is visible (16-decision hysteresis) and
+Atlas-G otherwise; both nets run every step so their memory stays current. The
+official validator passes at p50 1.7 ms / p99 2.0 ms.
+
+A second failure mode was "freeze": the policy stops one tile short of a door
+(C6: at x=944 facing the red door, all-zero actions forever) or presses forward
+into a wall (C3). An observation-only reflex — 8 forward steps with vf≈0 ⇒ turn
+4 steps; 8 pure no-ops ⇒ forward+USE — fixes C6 5/5, C3 3/5, C8 3/5 in targeted
+tests. Combat is excluded whenever an enemy is visible.
+
+PPO v2 (suite reward, key potential, 40 updates) raised mean return 1.4→8.5 but
+*forgot* C5 (0/5) and did not beat BC v5 on C6/C8, so it is not the nav expert.
+
+### Final shipped checkpoint (measured)
+
+- **Val fast** (70 episodes): weighted proxy **+5.696** (95% CI +4.862…+6.551),
+  paired delta vs PPO-25 **+4.521** (CI +2.589…+6.728), gate **PROMOTE**.
+  C0 100, C1 20, C2 80, C3 0, C4 20, C5 100, C6 100, C8 40; C7/C9–C13 0.
+- **Test fast** (untouched, logged): **+5.790** (CI +5.115…+6.509), paired
+  +4.907 (CI +3.002…+7.073), gate **PROMOTE**.
+- Pre-existing checkpoints on the same val split: bc_arena +0.924, bc_use
+  +1.168, PPO-25 +1.175. Atlas-G alone +3.066.
+- Official validator: PASS; p50 1.7 ms, p99 2.0 ms, max 3 ms; init 0.5 s.
+
+The last change before shipping was per-expert previous-action state in the
+router (each expert sees its own last action, not the other's). That restored
+C2 from 0% to 80% on val; a map-pose fix (`prev_exec` for the deterministic map)
+then traded C3 back to 0% for correct pose integration. We kept the correct
+version: C3 is one category, the map state is used by every navigation decision.

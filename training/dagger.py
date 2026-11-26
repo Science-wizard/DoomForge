@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from training.collect import _blank, _exit_targets, _labels, run_episode
+from training.collect import _blank, _exit_targets, _labels, goal_target, run_episode
 from training.evaluate import Runner, load_net
 from training.maps.gen_wad import generate_map
 from training.obs import flatten_obs, step_prev
@@ -49,6 +49,7 @@ def dagger_episode(net, device: str, wad: str, map_name: str, seed: int,
     health = []
     while steps < max_steps:
         label = teacher.act(obs, priv)
+        goal_vec, goal_type, goal_mask = goal_target(teacher, priv)
         student = runner.act(obs)
         action = label if rng.random() < beta else student
         builder.update(obs, prev_action)
@@ -66,6 +67,9 @@ def dagger_episode(net, device: str, wad: str, map_name: str, seed: int,
         buf["prev"][steps] = flat["prev_action"]
         buf["map"][steps] = flat["map"]
         buf["pose"][steps] = flat["pose"]
+        buf["goal"][steps] = goal_vec
+        buf["goal_type"][steps] = goal_type
+        buf["goal_mask"][steps] = goal_mask
         buf["action"][steps] = label          # <-- teacher label, not the executed action
         buf["exec"][steps] = action
         buf["keys"][steps] = np.asarray(priv["keys"], np.uint8)
@@ -101,7 +105,7 @@ def main() -> None:
     ap.add_argument("--ckpt", default="training/runs/bc_a/ckpt.pt")
     ap.add_argument("--episodes", type=int, default=100)
     ap.add_argument("--out", default="training/data/demos_dagger")
-    ap.add_argument("--source", default="gen", choices=("gen", "freedoom_nav", "mix"))
+    ap.add_argument("--source", default="gen", choices=("gen", "freedoom_nav", "mix", "suite"))
     ap.add_argument("--tier", type=int, default=0)
     ap.add_argument("--no-doors", action="store_true")
     ap.add_argument("--no-monsters", action="store_true")
@@ -111,8 +115,15 @@ def main() -> None:
     ap.add_argument("--device", default="cpu")
     args = ap.parse_args()
 
+    import torch
+    if args.device != "mps":
+        torch.set_num_threads(1)
     net = load_net(args.ckpt, args.device)
     rng = np.random.default_rng(args.seed)
+    suite_rows = []
+    if args.source == "suite":
+        suite_rows = [json.loads(l) for l in
+                      Path("training/data/suite/train/manifest.jsonl").read_text().splitlines() if l.strip()]
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     manifest = (out / "manifest.jsonl").open("a")
@@ -120,9 +131,15 @@ def main() -> None:
     exits = 0
     for i in range(args.episodes):
         src = args.source
+        suite_row = None
+        if src == "suite":
+            suite_row = suite_rows[int(rng.integers(0, len(suite_rows)))]
+            src = "gen"
         if src == "mix":
             src = "gen" if rng.random() < 0.5 else "freedoom_nav"
-        if src == "gen":
+        if suite_row is not None:
+            wad, map_name, tag = suite_row["wad"], suite_row["map_name"], suite_row["category"]
+        elif src == "gen":
             tier = args.tier or int(rng.integers(2, 5))
             seed = int(rng.integers(*GEN_TRAIN))
             spec = generate_map(seed, tier, "training/data/maps",

@@ -18,6 +18,7 @@ import numpy as np
 import torch
 
 from submission.model import DoomNet
+from submission.model_v1 import DoomNet as DoomNetV1
 from training.coverage import SectorTracker
 from training.maps.gen_wad import generate_map
 from training.maps.drills import generate_drill
@@ -82,44 +83,82 @@ def _door_summary(env, ceilings, floors):
 def run_agent_episode(net: DoomNet, wad: str, map_name: str = "MAP01", device: str = "cpu",
                       ticks: int = 4200, seed: int = 0, record: bool = False,
                       sample: bool = False, throttle_ms: float = 0.0,
-                      weights: dict | None = None) -> dict:
+                      weights: dict | None = None, record_traj: bool = False,
+                      track_sectors: bool = True, obs_transform=None,
+                      memory_wipe_at_key: bool = False, agent=None) -> dict:
     from doom_env import make_env
 
     weights = {**DEFAULT_WEIGHTS, **(weights or {})}
     env = make_env(wad, map_name, episode_ticks=ticks, render_buffers=True)
     obs, _ = env.reset(seed=seed)
     p0 = env.privileged_state()
-    runner = Runner(net, device)
-    tracker = SectorTracker(env)
-    tracker.update(p0["x"], p0["y"])
+    runner = Runner(net, device) if agent is None else None
+    tracker = SectorTracker(env) if track_sectors else None
+    if tracker is not None:
+        tracker.update(p0["x"], p0["y"])
     frames = []
     lat = []
     steps = 0
-    net.eval()
+    if agent is not None:
+        agent.reset()
+    elif net is not None:
+        net.eval()
+    prev_pos = (p0["x"], p0["y"])
+    prev_angle = p0["angle"]
+    prev_keys = int((np.asarray(p0["keys"]) > 0.5).sum())
+    path_len = 0.0
+    spin_steps = noop_steps = 0
+    unique_cells: set[tuple[int, int]] = set()
+    actions_hash = __import__("hashlib").sha1()
+    wiped = False
     while True:
         if throttle_ms:
             time.sleep(throttle_ms / 1000.0)
+        if obs_transform is not None:
+            obs = obs_transform(obs, steps)
         t0 = time.perf_counter()
-        action = runner.act(obs)
+        action = runner.act(obs) if runner is not None else agent.act(obs)
         lat.append((time.perf_counter() - t0) * 1000)
+        actions_hash.update(np.asarray(action, np.int8).tobytes())
         if record:
             frames.append(np.asarray(obs["rgb"]).copy())
         obs, reward, term, trunc, info = env.step(action)
         steps += 1
         p = env.privileged_state()
-        tracker.update(p["x"], p["y"])
+        dx, dy = p["x"] - prev_pos[0], p["y"] - prev_pos[1]
+        disp = float(np.hypot(dx, dy))
+        path_len += disp
+        if disp < 2.0 and abs((p["angle"] - prev_angle + 180) % 360 - 180) > 1.0:
+            spin_steps += 1
+        if int(np.asarray(action).sum()) == 0:
+            noop_steps += 1
+        unique_cells.add((int(p["x"] // 64), int(p["y"] // 64)))
+        prev_pos, prev_angle = (p["x"], p["y"]), p["angle"]
+        if tracker is not None:
+            tracker.update(p["x"], p["y"])
+        keys_now = int((np.asarray(p["keys"]) > 0.5).sum())
+        if memory_wipe_at_key and not wiped and keys_now > prev_keys and runner is not None:
+            runner.reset()
+            wiped = True
+        prev_keys = keys_now
         if term or trunc:
             break
     p = env.privileged_state()
     doors, locks = _door_summary(env, np.asarray(p["sector_ceiling"]), np.asarray(p["sector_floor"]))
     keys = int((np.asarray(p["keys"]) > 0.5).sum())
     total_sectors = max(1, env.mapinfo.num_sectors)
+    if tracker is not None:
+        coverage = len(tracker.visited) / total_sectors
+        sectors = len(tracker.visited)
+    else:
+        coverage = 0.0
+        sectors = len(unique_cells)
     comp = {
         "exit": weights["exit"] * float(p["exit_reached"]),
         "keys": weights["key"] * keys,
         "locks": weights["lock"] * locks,
         "doors": weights["door"] * max(0, doors - locks),
-        "sectors": min(weights["sector"] * len(tracker.visited), weights["sector_cap"]),
+        "sectors": min(weights["sector"] * sectors, weights["sector_cap"]),
         "kills": weights["kill"] * max(0, p["kills"] - p0["kills"]),
         "damage": -weights["damage"] * float(p["damage_taken"]),
         "death": 0.0,
@@ -141,22 +180,31 @@ def run_agent_episode(net: DoomNet, wad: str, map_name: str = "MAP01", device: s
         "keys": keys,
         "doors": int(doors),
         "locks": int(locks),
-        "sectors": len(tracker.visited),
-        "coverage": len(tracker.visited) / total_sectors,
+        "sectors": sectors,
+        "coverage": coverage,
         "proxy": float(sum(comp.values())),
         "components": comp,
         "p50_ms": float(np.median(lat)) if lat else 0.0,
         "p99_ms": float(np.percentile(lat, 99)) if lat else 0.0,
         "frames": frames,
+        "path_len": path_len,
+        "spin_frac": spin_steps / max(1, steps),
+        "noop_frac": noop_steps / max(1, steps),
+        "unique_cells": len(unique_cells),
+        "action_hash": actions_hash.hexdigest(),
+        "memory_wiped": bool(wiped),
+        "start": [float(p0["x"]), float(p0["y"])],
     }
     env.close()
     return out
 
 
-def load_net(path: str | Path, device: str = "cpu") -> DoomNet:
+def load_net(path: str | Path, device: str = "cpu"):
     ckpt = torch.load(path, map_location=device)
-    net = DoomNet(hidden=ckpt.get("config", {}).get("hidden", 384))
-    net.load_state_dict(ckpt["model"])
+    sd = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
+    cls = DoomNet if "goal_head.net.0.weight" in sd else DoomNetV1
+    net = cls(hidden=ckpt.get("config", {}).get("hidden", 384) if isinstance(ckpt, dict) else 384)
+    net.load_state_dict(sd)
     net.to(device).eval()
     return net
 

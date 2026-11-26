@@ -38,6 +38,29 @@ EXIT_BINS = 12
 DIST_EDGES = (256.0, 512.0, 768.0, 1024.0, 1400.0)
 
 
+def goal_target(teacher, priv) -> tuple[np.ndarray, int, int]:
+    """Teacher objective -> ego-relative 8-vector, type id, mask."""
+    g = teacher.goal
+    kind = teacher.goal_kind or ""
+    if g is None:
+        return np.zeros(8, np.float32), 0, 0
+    dx, dy = g[0] - priv["x"], g[1] - priv["y"]
+    dist = math.hypot(dx, dy)
+    rel = math.atan2(dy, dx) - math.radians(priv["angle"])
+    if kind.startswith("exit"):
+        typ = 0
+    elif kind == "key":
+        typ = 1
+    elif kind in ("frontier", "explore"):
+        typ = 2
+    else:
+        typ = 3
+    vec = np.array([np.clip(dx / 512.0, -1, 1), np.clip(dy / 512.0, -1, 1),
+                    np.clip(dist / 1024.0, 0, 1), math.sin(rel), math.cos(rel),
+                    typ / 4.0, 1.0, 0.0], np.float32)
+    return vec, typ, 1
+
+
 def _blank(T: int) -> dict:
     return {
         "dist": np.zeros((T, 64), np.float16),
@@ -58,8 +81,11 @@ def _blank(T: int) -> dict:
         "exit_dist": np.zeros(T, np.uint8),
         "key_colours": np.zeros((T, 6), np.uint8),
         "damage8": np.zeros(T, np.float16),
-        "map": np.zeros((T, 5, 32, 32), np.uint8),
+        "map": np.zeros((T, 6, 32, 32), np.uint8),
         "pose": np.zeros((T, 6), np.float16),
+        "goal": np.zeros((T, 8), np.float16),
+        "goal_type": np.zeros(T, np.uint8),
+        "goal_mask": np.zeros(T, np.uint8),
     }
 
 
@@ -133,6 +159,7 @@ def run_episode(wad: str, map_name: str, seed: int, max_steps: int = 1200,
     health = []
     while steps < max_steps:
         action = teacher.act(obs, priv)
+        goal_vec, goal_type, goal_mask = goal_target(teacher, priv)
         builder.update(obs, prev_action)
         flat = flatten_obs(obs, prev_action, turn_held, use_last,
                            map_crop=builder.crop(), pose=builder.pose())
@@ -148,6 +175,9 @@ def run_episode(wad: str, map_name: str, seed: int, max_steps: int = 1200,
         buf["prev"][steps] = flat["prev_action"]
         buf["map"][steps] = flat["map"]
         buf["pose"][steps] = flat["pose"]
+        buf["goal"][steps] = goal_vec
+        buf["goal_type"][steps] = goal_type
+        buf["goal_mask"][steps] = goal_mask
         buf["action"][steps] = action
         buf["keys"][steps] = np.asarray(priv["keys"], np.uint8)
         buf["priv"][steps] = (priv["x"], priv["y"], priv["angle"],
@@ -188,7 +218,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--episodes", type=int, default=100)
     ap.add_argument("--out", default="training/data/demos")
-    ap.add_argument("--source", default="gen", choices=("gen", "freedoom", "freedoom_nav", "drill", "roomdoor", "mix"))
+    ap.add_argument("--source", default="gen", choices=("gen", "freedoom", "freedoom_nav", "drill", "roomdoor", "keychain",
+                              "backtrack", "mix"))
     ap.add_argument("--split", default="train", choices=("train", "val"))
     ap.add_argument("--tier", type=int, default=0, help="0 = randomise 2..4")
     ap.add_argument("--no-doors", action="store_true")
@@ -223,6 +254,14 @@ def main() -> None:
             spec = generate_drill(args.seed * 100000 + i, "training/data/maps",
                                   n_doors=args.drill_doors, key=args.drill_key)
             wad, map_name, tag = str(spec.path), spec.map_name, "drill"
+        elif src == "keychain":
+            from training.maps.drills import generate_key_chain
+            spec = generate_key_chain(args.seed * 100000 + i, "training/data/maps")
+            wad, map_name, tag = str(spec.path), spec.map_name, "keychain"
+        elif src == "backtrack":
+            from training.maps.drills import generate_backtrack
+            spec = generate_backtrack(args.seed * 100000 + i, "training/data/maps")
+            wad, map_name, tag = str(spec.path), spec.map_name, "backtrack"
         elif src == "gen":
             tier = args.tier or int(rng.integers(2, 5))
             seed = int(rng.integers(seed0, seed1 + 1))

@@ -9,11 +9,11 @@
   @page { size: A4; margin: 13mm 14mm 12mm 14mm; }
   html, body { margin:0; padding:0; }
   body { font-family: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
-         color:var(--ink); font-size:9.1pt; line-height:1.33; }
+         color:var(--ink); font-size:8.9pt; line-height:1.31; }
   h1 { font-size:19pt; margin:0 0 2mm; letter-spacing:-0.4pt; }
-  h2 { font-size:11.2pt; margin:4mm 0 1.5mm; padding-bottom:1mm; border-bottom:1px solid var(--rule); }
+  h2 { font-size:11.2pt; margin:3.2mm 0 1.3mm; padding-bottom:1mm; border-bottom:1px solid var(--rule); }
   h3 { font-size:9.5pt; margin:2.4mm 0 1mm; }
-  p { margin:0 0 1.7mm; }
+  p { margin:0 0 1.4mm; }
   ul { margin:0 0 1.7mm; padding-left:4.2mm; }
   li { margin:0 0 0.75mm; }
   .kicker { color:var(--accent); font-weight:700; font-size:8.3pt; letter-spacing:1.1pt; text-transform:uppercase; }
@@ -21,16 +21,16 @@
   .two { display:grid; grid-template-columns:1fr 1fr; gap:5.5mm; }
   .panel { background:var(--panel); border:1px solid var(--rule); border-radius:2mm; padding:2.5mm 3mm; }
   .panel h3 { margin-top:0; }
-  table { width:100%; border-collapse:collapse; font-size:8.4pt; margin:1mm 0 2mm; }
-  th, td { text-align:left; padding:1mm 1.3mm; border-bottom:1px solid var(--rule); }
+  table { width:100%; border-collapse:collapse; font-size:8.0pt; margin:0.8mm 0 1.6mm; }
+  th, td { text-align:left; padding:0.65mm 1.1mm; border-bottom:1px solid var(--rule); }
   th { color:var(--muted); font-weight:600; font-size:7.9pt; text-transform:uppercase; letter-spacing:.4pt; }
   .num { text-align:right; font-variant-numeric:tabular-nums; }
-  .flow { font-family:"SFMono-Regular", Menlo, monospace; font-size:7.5pt; line-height:1.42;
+  .flow { font-family:"SFMono-Regular", Menlo, monospace; font-size:7.1pt; line-height:1.36;
           background:#0f1419; color:#e7edf3; padding:2.8mm; border-radius:2mm; white-space:pre; }
   .stat { font-size:14pt; font-weight:700; letter-spacing:-0.4pt; }
   .small { font-size:7.8pt; color:var(--muted); }
   .page-break { break-before: page; }
-  .foot { margin-top:2.2mm; padding-top:1.4mm; border-top:1px solid var(--rule); color:var(--muted); font-size:7.5pt; }
+  .foot { margin-top:1.4mm; padding-top:1.4mm; border-top:1px solid var(--rule); color:var(--muted); font-size:7.5pt; }
   code { font-family:"SFMono-Regular", Menlo, monospace; font-size:7.9pt; }
   .accent { color:var(--accent); font-weight:600; }
   .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:2.2mm; margin:2mm 0 2.4mm; }
@@ -42,8 +42,9 @@
 
 <div class="kicker">Yugaantar DevForge · Track 1 · Can It Play DOOM?</div>
 <h1>DoomForge</h1>
-<p class="sub">A 1.56 M-parameter multimodal agent that <b>sees exits</b>, remembers doors, and decides in
-1.0 ms on one CPU thread — trained by privileged expert seeding and PPO on a generated four-tier curriculum.</p>
+<p class="sub">A 1.87 M-parameter multimodal agent that <b>sees exits</b>, fetches keys, opens locks, and
+decides in 1.7 ms on one CPU thread — a goal-conditioned Atlas-G policy routed with a frozen combat expert,
+trained by privileged seeding, DAgger and PPO on a 14-category diagnostic suite.</p>
 
 <h2>Unique selling proposition</h2>
 <p>Two failure modes dominate zero-shot DOOM: the agent cannot recognise the exit, and it cannot remember a
@@ -52,12 +53,11 @@ nor key/lock colour, so DoomForge adds a <span class="accent">cheap colour pathw
 to 30×40) and trains <span class="accent">exit, bearing, distance and key-colour auxiliary heads</span> from
 privileged map geometry. The policy is a compact ray/entity/vitals/RGB encoder feeding a GRU with factorised
 action heads. Training is <span class="accent">expert-seeded</span>: a privileged A* teacher demonstrates
-navigation, doors and combat; behaviour cloning gives a strong prior; PPO fine-tunes on a generated curriculum.
-The result fits the 1-CPU, 40 ms/decision sandbox with a >60× latency margin.</p>
+navigation, doors and combat; behaviour cloning gives a strong prior; PPO fine-tunes on the suite curriculum.</p>
 
 <div class="kpis">
-  <div class="kpi"><div class="lbl">Parameters</div><div class="stat">1.81 M</div></div>
-  <div class="kpi"><div class="lbl">CPU decision (p50)</div><div class="stat">1.0 ms</div></div>
+  <div class="kpi"><div class="lbl">Parameters / expert</div><div class="stat">1.87 M</div></div>
+  <div class="kpi"><div class="lbl">CPU decision (p50)</div><div class="stat">1.7 ms</div></div>
   <div class="kpi"><div class="lbl">Validator</div><div class="stat">PASS</div></div>
   <div class="kpi"><div class="lbl">Init</div><div class="stat">0.6 s</div></div>
 </div>
@@ -68,14 +68,18 @@ The result fits the 1-CPU, 40 ms/decision sandbox with a >60× latency margin.</
   vitals 17 ─► MLP ────────────────────────────────────►  64 ─┤
   RGB 30×40×3 ─► Conv2d ×3 (stride 2) ─────────────────► 128 ─┤
   prev action 12 ─► MLP ──────────────────────────────►  32 ─┤
-  map 5×32×32 ─► Conv2d ×3 ────────────────────────────► 128 ─┤
+  map 6×32×32 ─► Conv2d ×3 (+frontier) ───────────────► 128 ─┤
+  goal 8 ─► MLP ───────────────────────────────────────►  32 ─┤
   pose 6 ─► MLP ───────────────────────────────────────►  32 ─┤
-                                                              ├─ 640 → GRU(384) → 384
+                                                              ├─ 672 → GRU(384) → 384
                                                               │
         ┌──────────────────────┬──────────────────────────────┼─────────────────────┐
         ▼                      ▼                              ▼                     ▼
   move/strafe/turn        value V(s)              exit visible/bearing/dist     keys, enemy,
-  attack/use/next                                  key colours, damage           door ahead</div>
+  attack/use/next                                  key colours, damage           door ahead
+
+  hybrid router: enemy visible ⇒ frozen Phase-2 combat expert, else Atlas-G
+  reflex: 8 stuck-forward ⇒ turn 4; 8 no-ops ⇒ forward + USE (combat exempt)</div>
 
 <div class="two" style="margin-top:2.2mm">
 <div class="panel">
@@ -90,15 +94,16 @@ buttons, allowed as action masking.</li>
 </ul>
 </div>
 <div class="panel">
-<h3>Memory (B+ minimal, shipped)</h3>
+<h3>Memory and goals (Atlas-G)</h3>
 <ul>
 <li>Deterministic <code>MapBuilder</code>: heading from the measured turn table, translation from ego
-velocity, rays/items projected into a 64×64 allocentric grid at 96 units/cell; a 32×32 crop and a
-6-value pose feed the policy.</li>
-<li>Correcting the turn table and velocity timing cut heading drift from 63° to 16° and position
-error from 907 to 361 units over 250 steps.</li>
-<li>Event tokens, translation-only scan matching and a 96×96/64-unit map are the next ablation;
-promote only if held-out proxy improves.</li>
+velocity, rays/items projected into a 64×64 allocentric grid; a 6-channel 32×32 crop adds a
+<b>frontier</b> channel to visited/wall/door/locked/item.</li>
+<li>A goal head predicts the teacher’s objective as an ego-relative 8-vector + type
+(exit/key/frontier/other); its 32-dim encoding is fused into the policy. At inference the goal is
+predicted from observations only.</li>
+<li>Heading drift 63° → 16° and position error 907 → 361 units over 250 steps with the corrected
+turn table; scan matching is measured but deferred until the suite shows a drift-limited failure.</li>
 </ul>
 </div>
 </div>
@@ -111,8 +116,7 @@ with door costs, a door state machine, switch/walk exits and circle-strafing com
 privileged exit/key/door labels. <b>BC.</b> Six-head cross-entropy + exit/key-colour/damage/value heads on
 128-step windows. <b>PPO.</b> Clipped surrogate, GAE, recurrent state, reward = exit +10, key +3, lock +3,
 new sector +0.3, new cell +0.01, kill +0.6, damage −0.01/HP, early death penalty, potential-based objective
-shaping. <b>Selection.</b> A proxy scorer mirrors the four official categories and reports every component
-separately; the best held-out checkpoint is shipped.</p>
+shaping. <b>Selection.</b> A paired suite gate with bootstrap CIs decides promotion.</p>
 
 <div class="foot">DoomForge · Track 1 · page 1/2 · github.com/Science-wizard/DoomForge</div>
 
@@ -143,17 +147,18 @@ key chains → full pool.</p>
 optimises kills minus damage. Attention over up to 32 entities gives a permutation-invariant threat list.</p>
 </div>
 <div>
-<h3>Proxy leaderboard (held-out seeds)</h3>
+<h3>Diagnostic suite (held-out seeds 10 000+)</h3>
 <table>
-<tr><th>Split</th><th>Skill</th><th class="num">Exit</th><th class="num">Keys</th><th class="num">Proxy</th></tr>
-<tr><td>bench t1</td><td>Combat</td><td class="num">6/8</td><td class="num">0</td><td class="num">+8.20</td></tr>
-<tr><td>bench t2</td><td>Exploration</td><td class="num">0/8</td><td class="num">0</td><td class="num">+0.48</td></tr>
-<tr><td>bench t3</td><td>Key → lock</td><td class="num">0/8</td><td class="num">0</td><td class="num">−0.03</td></tr>
-<tr><td>bench t4</td><td>Gauntlet</td><td class="num">0/8</td><td class="num">0</td><td class="num">−0.32</td></tr>
-<tr><td>Door drills*</td><td>1-door / key</td><td class="num">6/8</td><td class="num">1</td><td class="num">+9.12</td></tr>
-<tr><td>Freedoom 23–32</td><td>Unseen hand-made</td><td class="num">0/10</td><td class="num">0</td><td class="num">+0.36</td></tr>
+<tr><th>Category</th><th class="num">PPO-25</th><th class="num">Atlas-G</th><th class="num">Hybrid</th></tr>
+<tr><td>C0 sanity / C2 arena</td><td class="num">0 / 80%</td><td class="num">100 / 60%</td><td class="num">100 / 80%</td></tr>
+<tr><td>C1 duel / C4 room door</td><td class="num">10 / 0%</td><td class="num">0 / 20%</td><td class="num">20 / 20%</td></tr>
+<tr><td>C3 door / C5 key → lock</td><td class="num">0 / 0%</td><td class="num">0 / 100%</td><td class="num">0 / 100%</td></tr>
+<tr><td>C6 two-key / C8 backtrack</td><td class="num">0 / 0%</td><td class="num">0 / 20%</td><td class="num">100 / 40%</td></tr>
+<tr><td><b>Tier-weighted proxy</b></td><td class="num">+1.18</td><td class="num">+3.07</td><td class="num"><b>+5.70</b></td></tr>
 </table>
-<p class="small">8 maps per generated tier, fixed bench seeds 30000+, one engine seed; Freedoom MAP23–32 held out. Shipped checkpoint: PPO-25, <b>6/8 tier-1 exits, 19 kills</b>, every tier proxy improved. *Door drills come from a learned two-expert gate (6/8 drills, 5/8 tier-1, worse t2–t4) — measured but not shipped. Generated by <code>training/bench.py</code>; the README embeds the same numbers.</p>
+<p class="small">70 episodes (5 maps/category), one seed; 95% CI +4.86…+6.55. Paired delta vs PPO-25:
+<b>+4.52</b> (CI +2.59…+6.73), gate PROMOTE. Test split: <b>+5.79</b> (CI +5.12…+6.51).
+Legacy bench t1: 7/12 exits, 25 kills. Full table: <code>docs/RESULTS.md</code>.</p>
 
 <h3>Failure modes and mitigations</h3>
 <ul>
@@ -161,7 +166,6 @@ optimises kills minus damage. Attention over up to 32 entities gives a permutati
 <li><b>Door-frame deadlock:</b> door drills, USE edge penalty, PPO recovery; the teacher’s door state machine
 is the known weak point and is not used at inference.</li>
 <li><b>Colour overfit:</b> randomised wall/floor/light/door/exit textures + Freedoom held-out.</li>
-<li><b>Memory drift:</b> B+ heading is exact; translation measured before scan matching.</li>
 <li><b>Time:</b> A ships first; B+ is promoted only if it wins on held-out proxy score.</li>
 </ul>
 
@@ -181,11 +185,12 @@ is the known weak point and is not used at inference.</li>
 <ul>
 <li>Built from <code>Reinforce-SST/devforge-doom-template</code>; <code>env/</code>, <code>validate.py</code> and
 the <code>DoomAgent</code> contract are untouched; no Dockerfile; no CI/CD.</li>
-<li>Every decision is a forward pass of trained parameters. The teacher, A*, BFS and door-state code live only
-under <code>training/</code> and are never imported by <code>submission/</code>.</li>
+<li>Every decision is a forward pass of trained parameters plus a deterministic, observation-only anti-freeze
+reflex. The teacher, A*, BFS and door-state code live only under <code>training/</code> and are never imported by
+<code>submission/</code>.</li>
 <li>Weights in <code>submission/weights/</code> via Git LFS; repository ≪ 1 GB; no data shards committed.</li>
 <li>Deterministic argmax; explicit recurrent state; no network, engine or disk access at inference.</li>
-<li>Validator: init 0.4 s (limit 60 s), p50 0.8–0.9 ms / p99 1.0 ms (limit 5 s), one dry-run episode clean.</li>
+<li>Validator: init 0.4 s (limit 60 s), p50 1.7 ms / p99 2.1 ms (limit 5 s), dry-run episode reached the exit in 195 steps.</li>
 </ul>
 </div>
 <div class="panel">
@@ -193,11 +198,11 @@ under <code>training/</code> and are never imported by <code>submission/</code>.
 <table>
 <tr><th>Budget</th><th class="num">Limit</th><th class="num">Ours</th></tr>
 <tr><td>Init</td><td class="num">60 s</td><td class="num">0.4 s</td></tr>
-<tr><td>Per decision</td><td class="num">40 ms avg</td><td class="num">1.0 ms</td></tr>
-<tr><td>Any act()</td><td class="num">5 s</td><td class="num">1.0 ms</td></tr>
+<tr><td>Per decision</td><td class="num">40 ms avg</td><td class="num">1.7 ms</td></tr>
+<tr><td>Any act()</td><td class="num">5 s</td><td class="num">2.1 ms p99</td></tr>
 <tr><td>RAM</td><td class="num">8 GB</td><td class="num">&lt; 1 GB</td></tr>
 <tr><td>VRAM</td><td class="num">2 GB</td><td class="num">&lt; 0.1 GB (CPU path)</td></tr>
-<tr><td>Repo</td><td class="num">1 GB</td><td class="num">&lt; 30 MB</td></tr>
+<tr><td>Repo</td><td class="num">1 GB</td><td class="num">17.5 MB</td></tr>
 </table>
 <p class="small">Official scoring weights are hidden; the brief reports proxy components, never a claimed
 leaderboard score.</p>

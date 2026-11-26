@@ -10,8 +10,8 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-from .gen_wad import (LOCK_BLUE, MapSpec, Rect, T_BLUECARD, T_CLIP, T_PLAYER1, T_STIMPACK,
-                      TILE, Door, _build_lumps, _door_tile, _write_wad)
+from .gen_wad import (LOCK_BLUE, LOCK_RED, MapSpec, Rect, T_BLUECARD, T_CLIP, T_PLAYER1,
+                      T_REDCARD, T_STIMPACK, TILE, Door, _build_lumps, _door_tile, _write_wad)
 
 
 def generate_drill(seed: int, out_dir: str | Path | None = None, n_doors: int = 2,
@@ -70,6 +70,106 @@ def generate_drill(seed: int, out_dir: str | Path | None = None, n_doors: int = 
         out = Path(out_dir)
         out.mkdir(parents=True, exist_ok=True)
         path = out / f"drill_s{seed:05d}.wad"
+        _write_wad(path, spec.lumps, spec.map_name)
+        spec.path = path
+    return spec
+
+
+def generate_key_chain(seed: int, out_dir: str | Path | None = None, width: int = 40) -> MapSpec:
+    """Two-lock chain: start -> red key -> red door -> blue key -> blue door -> exit.
+
+    The side rooms are dead ends behind their lock, so the exit is unreachable
+    until the keys are collected in order.  This is the C6 category's guarantee,
+    which the room generator does not provide.
+    """
+    rng = random.Random(seed * 6151 + 29)
+    H, W = 9, width
+    cy = 4
+    grid = [[-1] * W for _ in range(H)]
+    for y in range(2, 7):
+        for x in range(1, 6):
+            grid[y][x] = 0
+        for x in range(W - 6, W - 1):
+            grid[y][x] = 1
+    for x in range(5, W - 5):
+        grid[cy][x] = 2
+    rooms = [Rect(1, 2, 6, 7), Rect(W - 6, 2, W - 1, 7), Rect(5, cy, W - 5, cy + 1)]
+
+    doors: list[Door] = []
+    door_xs = (15, 27)
+    locks = (LOCK_RED, LOCK_BLUE)
+    for index, (x, lock) in enumerate(zip(door_xs, locks)):
+        grid[cy][x] = _door_tile(index)
+        doors.append(Door(x, cy, "v", a=2, b=2, lock=lock,
+                          sector=len(rooms) + index, index=index))
+
+    spec = MapSpec(seed=seed, tier=1, kind="drill", width=W * TILE, height=H * TILE,
+                   grid=grid, rooms=rooms, doors=doors,
+                   start=(3 * TILE + 32.0, 4 * TILE + 32.0), start_angle=0,
+                   exit_line=((W - 4) * TILE + 32, 2 * TILE + 24, (W - 4) * TILE + 32, 6 * TILE + 40),
+                   exit_room=1)
+    spec.things.append((T_PLAYER1, *spec.start, 0))
+    # Keys sit on the corridor floor, one on each side of its lock.  No side
+    # rooms: the teacher's door task is reliable on a straight line.
+    spec.things.append((T_REDCARD, 10 * TILE + 32.0, cy * TILE + 32.0, 0))
+    spec.things.append((T_BLUECARD, 21 * TILE + 32.0, cy * TILE + 32.0, 0))
+    for i in range(2):
+        spec.things.append((rng.choice((T_STIMPACK, T_CLIP)), (12 + i * 8) * TILE + 32.0,
+                            (cy - 2) * TILE + 32.0, 0))
+    spec.lumps = _build_lumps(spec)
+    if out_dir is not None:
+        out = Path(out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        path = out / f"keychain_s{seed:05d}.wad"
+        _write_wad(path, spec.lumps, spec.map_name)
+        spec.path = path
+    return spec
+
+
+def generate_backtrack(seed: int, out_dir: str | Path | None = None, width: int = 34) -> MapSpec:
+    """The key sits in an alcove behind the start; the exit is ahead behind a lock."""
+    rng = random.Random(seed * 3571 + 43)
+    H, W = 10, width
+    cy = 4
+    grid = [[-1] * W for _ in range(H)]
+    for y in range(2, 7):
+        for x in range(7, 13):
+            grid[y][x] = 0
+        for x in range(W - 6, W - 1):
+            grid[y][x] = 1
+    for x in range(12, W - 5):
+        grid[cy][x] = 2
+    key_sec = 3
+    rooms = [Rect(7, 2, 13, 7), Rect(W - 6, 2, W - 1, 7), Rect(12, cy, W - 5, cy + 1),
+             Rect(7, 7, 12, H - 1)]
+    for y in range(7, H - 1):
+        for x in range(7, 12):
+            grid[y][x] = key_sec
+    grid[7][8] = key_sec  # opening from the start room into the alcove behind it
+    grid[6][8] = 0
+
+    doors: list[Door] = []
+    x = 20
+    grid[cy][x] = _door_tile(0)
+    doors.append(Door(x, cy, "v", a=2, b=2, lock=LOCK_BLUE,
+                      sector=len(rooms), index=0))
+
+    spec = MapSpec(seed=seed, tier=1, kind="drill", width=W * TILE, height=H * TILE,
+                   grid=grid, rooms=rooms, doors=doors,
+                   start=(9 * TILE + 32.0, 4 * TILE + 32.0), start_angle=0,
+                   exit_line=((W - 4) * TILE + 32, 2 * TILE + 24, (W - 4) * TILE + 32, 6 * TILE + 40),
+                   exit_room=1)
+    spec.things.append((T_PLAYER1, *spec.start, 0))
+    c = rooms[key_sec].center()
+    spec.things.append((T_BLUECARD, c[0] * TILE + 32.0, c[1] * TILE + 32.0, 0))
+    for i in range(2):
+        spec.things.append((rng.choice((T_STIMPACK, T_CLIP)), (12 + i * 6) * TILE + 32.0,
+                            (cy - 2) * TILE + 32.0, 0))
+    spec.lumps = _build_lumps(spec)
+    if out_dir is not None:
+        out = Path(out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        path = out / f"backtrack_s{seed:05d}.wad"
         _write_wad(path, spec.lumps, spec.map_name)
         spec.path = path
     return spec

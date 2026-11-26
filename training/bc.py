@@ -52,7 +52,7 @@ def load_episodes(data_dir: str | Path, min_steps: int = 8) -> list[dict]:
             from submission.mapmem import MapBuilder
             n = len(ep["action"])
             builder = MapBuilder()
-            maps = np.zeros((n, 5, 32, 32), np.uint8)
+            maps = np.zeros((n, 6, 32, 32), np.uint8)
             poses = np.zeros((n, 6), np.float32)
             prev = None
             execs = ep["exec"] if "exec" in ep else ep["action"]
@@ -101,8 +101,11 @@ def collate(batch: list[dict], device: str) -> dict:
         "vitals": torch.zeros(B, T, 17),
         "rgb": torch.zeros(B, T, 3, 30, 40),
         "prev_action": torch.zeros(B, T, 12),
-        "map": torch.zeros(B, T, 5, 32, 32),
+        "map": torch.zeros(B, T, 6, 32, 32),
         "pose": torch.zeros(B, T, 6),
+        "goal": torch.zeros(B, T, 8),
+        "goal_type": torch.zeros(B, T, dtype=torch.long),
+        "goal_mask": torch.zeros(B, T),
         "heads": torch.zeros(B, T, 6, dtype=torch.long),
         "keys": torch.zeros(B, T, 6),
         "aux": torch.zeros(B, T, 35),
@@ -123,6 +126,10 @@ def collate(batch: list[dict], device: str) -> dict:
         out["prev_action"][i, :n] = torch.from_numpy(ep["prev"].astype(np.float32))
         out["map"][i, :n] = torch.from_numpy(ep["map"].astype(np.float32))
         out["pose"][i, :n] = torch.from_numpy(ep["pose"].astype(np.float32))
+        if "goal" in ep:
+            out["goal"][i, :n] = torch.from_numpy(ep["goal"].astype(np.float32))
+            out["goal_type"][i, :n] = torch.from_numpy(ep["goal_type"].astype(np.int64))
+            out["goal_mask"][i, :n] = torch.from_numpy(ep["goal_mask"].astype(np.float32))
         out["heads"][i, :n] = torch.from_numpy(ep["heads"])
         out["keys"][i, :n] = torch.from_numpy(ep["keys"].astype(np.float32))
         out["reward"][i, :n] = torch.from_numpy(ep["reward"].astype(np.float32))
@@ -154,8 +161,8 @@ def collate(batch: list[dict], device: str) -> dict:
 
 def batch_loss(net: DoomNet, batch: dict, anchor: DoomNet | None = None,
                anchor_weight: float = 0.0) -> tuple[torch.Tensor, dict]:
-    emb = net.encode({k: batch[k] for k in
-                      ("rays_dist", "rays_hit", "ent_feat", "ent_type", "ent_mask", "vitals", "rgb", "prev_action", "map", "pose")})
+    emb, gv, gt = net.encode_with_goal({k: batch[k] for k in
+        ("rays_dist", "rays_hit", "ent_feat", "ent_type", "ent_mask", "vitals", "rgb", "prev_action", "map", "pose")})
     logits, value, aux, _ = net.forward_seq(emb)
     m = batch["mask"]
     denom = m.sum().clamp(min=1.0)
@@ -194,7 +201,13 @@ def batch_loss(net: DoomNet, batch: dict, anchor: DoomNet | None = None,
     dmg = (dmg * m).sum() / denom
     aux_loss = keys + enemy + door + evis + kcol + bear + dist + dmg
     v_loss = (F.mse_loss(value[..., 0], batch["returns"], reduction="none") * m).sum() / denom
-    loss = ce + 0.2 * aux_loss + 0.5 * v_loss
+    gm = batch["goal_mask"]
+    gden = gm.sum().clamp(min=1.0)
+    goal_mse = (F.mse_loss(gv, batch["goal"], reduction="none").mean(-1) * gm).sum() / gden
+    goal_ce = (F.cross_entropy(gt.reshape(-1, 4), batch["goal_type"].reshape(-1),
+                               reduction="none") * gm.reshape(-1)).sum() / gden
+    goal_loss = goal_mse + 0.5 * goal_ce
+    loss = ce + 0.2 * aux_loss + 0.5 * v_loss + 1.0 * goal_loss
 
     kl = torch.zeros((), device=loss.device)
     if anchor is not None and anchor_weight > 0:
@@ -213,7 +226,8 @@ def batch_loss(net: DoomNet, batch: dict, anchor: DoomNet | None = None,
         kl = (torch.stack(kl_terms, 0).sum(0) * keep).sum() / keep.sum().clamp(min=1.0)
         loss = loss + anchor_weight * kl
     return loss, {"ce": ce.detach(), "aux": aux_loss.detach(), "value": v_loss.detach(),
-                  "exit": evis.detach(), "bear": bear.detach(), "kl": kl.detach()}
+                  "exit": evis.detach(), "bear": bear.detach(), "kl": kl.detach(),
+                  "goal": goal_loss.detach()}
 
 
 def evaluate_quick(net: DoomNet, device: str, n_maps: int = 4, seed: int = 10_000) -> dict:
@@ -252,7 +266,7 @@ def main() -> None:
     ap.add_argument("--success-only", action="store_true")
     args = ap.parse_args()
 
-    torch.set_num_threads(min(8, os.cpu_count() or 4))
+    torch.set_num_threads(min(10, os.cpu_count() or 4))
     device = args.device
     if device == "auto":
         device = "mps" if torch.backends.mps.is_available() else "cpu"

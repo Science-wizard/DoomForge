@@ -69,3 +69,25 @@ points earned so far, and penalties such as dying still apply. The agent is rest
 ## Replays
 
 The scorer records a replay of every run. Organizers watch the top teams' replays during manual review.
+
+---
+
+## Our diagnostic suite (suite-1)
+
+The official scorer is hidden, so development uses a 14-category suite that is
+harder and more diagnostic. It is **not** a claim about the official score; it
+is the target we optimize and the evidence behind architecture decisions.
+
+- 14 categories (C0–C13), 4 splits, WAD-hash leakage checks.
+- Fast gate: 5 maps/category × 1 seed (70 episodes). Full gate: 30 maps/category
+  × 5 seeds (2,000 episodes).
+- Headline: tier-weighted proxy (1.0/1.2/1.5/2.0) with a stratified bootstrap CI.
+- Per category: exit, success@k, proxy, coverage, keys, locks, kills, deaths,
+  SPL, spin, no-ops, steps. No category is dropped.
+- Paired promotion gate: `training/suite/compare.py` requires a positive
+  bootstrap CI and no category regression >10 points.
+- Probes: door-angle sweep, exit-sign ablation, door-colour swap, corruption,
+  determinism, memory wipe.
+
+Test and OOD splits are protected by `--allow-test` and every look is written to
+`test_touch.log`. Full design and commands: [`../training/suite/README.md`](../training/suite/README.md).

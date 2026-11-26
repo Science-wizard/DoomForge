@@ -60,3 +60,18 @@ It checks:
    measured with your agent **pinned to one CPU core** and numeric libraries limited to one thread
    (`OMP_NUM_THREADS=1` etc.), as at evaluation.
 5. Peak RAM (≤ 8 GB) and peak GPU memory (≤ 2 GB) are within the [per-agent limits](EVALUATION.md#hardware).
+
+## Final artifact (Phase 3)
+
+- `submission/weights/doomforge.pt` — Atlas-G v1 (1.87 M parameters, goal head +
+  frontier map). Navigation, exploration, keys and doors.
+- `submission/weights/combat.pt` — frozen Phase-2 PPO-25 (1.81 M parameters).
+  Selected whenever an enemy is visible; both nets see every observation.
+- `submission/agent.py` — loads both, routes with a 16-decision enemy-visibility
+  hysteresis, and applies an observation-only anti-freeze reflex outside combat.
+- `submission/model_v1.py` — the v1 network definition needed to deserialize the
+  combat checkpoint.
+
+If only `doomforge.pt` is present the agent runs single-model; if only a v1
+checkpoint is present it also runs single-model. The hybrid path is optional and
+fails back safely. Validator: PASS, p50 1.7 ms / p99 2.0 ms on one CPU thread.

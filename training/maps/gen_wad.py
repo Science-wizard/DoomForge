@@ -112,6 +112,8 @@ class MapSpec:
     adj: dict[int, list[tuple[int, int]]] = field(default_factory=dict)
     lumps: dict[str, bytes] = field(default_factory=dict)
     path: Path | None = None
+    exit_sign_texture: str | None = None
+    door_texture_override: str | None = None
 
     @property
     def map_name(self) -> str:
@@ -317,12 +319,14 @@ def _clear_line(grid, rooms, rid: int, horizontal: bool, rng: random.Random):
 
 # --------------------------------------------------------------------------- tiers
 def generate_map(seed: int, tier: int = 2, out_dir: str | Path | None = None,
-                 no_doors: bool = False, no_monsters: bool = False) -> MapSpec:
+                 no_doors: bool = False, no_monsters: bool = False,
+                 size_override: int | None = None, depth_override: int | None = None) -> MapSpec:
     rng = random.Random(seed * 1000003 + tier * 7919)
     if tier == 1:
         spec = _arena(seed, rng)
     else:
-        spec = _rooms(seed, tier, rng, out_dir, no_doors=no_doors, no_monsters=no_monsters)
+        spec = _rooms(seed, tier, rng, out_dir, no_doors=no_doors, no_monsters=no_monsters,
+                      size_override=size_override, depth_override=depth_override)
     spec.lumps = _build_lumps(spec)
     if out_dir is not None:
         out = Path(out_dir)
@@ -375,9 +379,10 @@ def _arena(seed: int, rng: random.Random) -> MapSpec:
 
 
 def _rooms(seed: int, tier: int, rng: random.Random, out_dir=None, no_doors: bool = False,
-           no_monsters: bool = False) -> MapSpec:
-    size = {2: 30, 3: 34, 4: 40}[tier]
-    depth = {2: 3, 3: 4, 4: 5}[tier]
+           no_monsters: bool = False, size_override: int | None = None,
+           depth_override: int | None = None) -> MapSpec:
+    size = size_override or {2: 30, 3: 34, 4: 40}[tier]
+    depth = depth_override or {2: 3, 3: 4, 4: 5}[tier]
     layout = None
     for attempt in range(24):
         layout = _split_layout(rng if attempt == 0 else random.Random(rng.random()), size, depth, min_room=4)
@@ -387,7 +392,8 @@ def _rooms(seed: int, tier: int, rng: random.Random, out_dir=None, no_doors: boo
         raise RuntimeError(f"could not build a connected layout (seed={seed}, tier={tier})")
     grid, rooms, doors = layout
     if len(rooms) < 4:
-        return generate_map(seed + 1, tier, out_dir, no_doors=no_doors, no_monsters=no_monsters)
+        return generate_map(seed + 1, tier, out_dir, no_doors=no_doors, no_monsters=no_monsters,
+                            size_override=size_override, depth_override=depth_override)
     _resolve_door_sides(grid, doors)
     if no_doors:
         for d in doors:
@@ -558,7 +564,7 @@ def _build_lumps(spec: MapSpec) -> dict[str, bytes]:
         for t in (front, back):
             if _is_door(t):
                 lock = door_by_tile[t].lock
-                tex = LOCK_TEXTURE.get(lock, door_mid)
+                tex = spec.door_texture_override or LOCK_TEXTURE.get(lock, door_mid)
                 return tex, tex
         return "-", "-"
 
@@ -629,7 +635,7 @@ def _build_lumps(spec: MapSpec) -> dict[str, bytes]:
     ux, uy = dx / ln, dy / ln
     nx, ny = dy / ln, -dx / ln
     mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-    sign_tex = EXIT_TEXTURES[spec.seed % len(EXIT_TEXTURES)]
+    sign_tex = spec.exit_sign_texture or EXIT_TEXTURES[spec.seed % len(EXIT_TEXTURES)]
     for side in (1.0, -1.0):
         px, py = mx + nx * 56 * side, my + ny * 56 * side
         ix, iy = int(px // TILE), int(py // TILE)

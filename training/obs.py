@@ -6,7 +6,7 @@ import numpy as np
 
 RGB_H, RGB_W = 30, 40   # 120x160 pooled 4x for the colour encoder
 PREV = 12
-MAP_CH, MAP_H, MAP_W = 5, 32, 32
+MAP_CH, MAP_H, MAP_W = 6, 32, 32
 POSE = 6
 
 

@@ -29,10 +29,13 @@ import torch.nn.functional as F
 from submission.mapmem import MapBuilder
 from submission.model import HEAD_SIZES, DoomNet
 from training.evaluate import load_net
+import math
+
 from training.maps.drills import generate_drill
 from training.maps.gen_wad import generate_map
 from training.obs import flatten_obs, stack_obs, step_prev
 from training.splits import FREEDOOM_TRAIN, GEN_TRAIN
+from training.suite.envs import SuiteSampler
 
 N_ENVS = 8
 T_ROLLOUT = 128
@@ -47,10 +50,11 @@ WINDOW = 32
 
 # --------------------------------------------------------------------------- maps
 class Sampler:
-    def __init__(self, seed: int = 0):
+    def __init__(self, seed: int = 0, suite: bool = False):
         self.rng = np.random.default_rng(seed)
         self.out = Path("training/data/ppo_maps")
         self.freedoom = [Path(f"maps/freedoom/{m}.wad") for m in FREEDOOM_TRAIN]
+        self.suite = SuiteSampler(seed=seed) if suite else None
 
     def sample(self, progress: float) -> tuple[str, str, int]:
         if progress < 0.20:
@@ -67,6 +71,10 @@ class Sampler:
         if progress < 0.75:
             s = generate_map(int(self.rng.integers(*GEN_TRAIN)), int(self.rng.integers(2, 4)), self.out)
             return str(s.path), s.map_name, 3150
+        if self.suite is not None:
+            wad, name, ticks, _cat = self.suite.sample(progress)
+            if wad:
+                return wad, name, ticks
         if self.rng.random() < 0.2 and self.freedoom:
             p = self.freedoom[int(self.rng.integers(0, len(self.freedoom)))]
             return str(p), p.stem, 4200
@@ -75,8 +83,23 @@ class Sampler:
 
 
 # --------------------------------------------------------------------------- reward
+_KEY_CACHE: dict[str, list[tuple[float, float, int]]] = {}
+_LOCK_TO_KEY = {1: 2, 2: 0, 3: 1}
+
+
+def key_positions(wad: str):
+    if wad not in _KEY_CACHE:
+        try:
+            from training.teacher.teacher import make_teacher
+            t = make_teacher(wad, "MAP01")
+            _KEY_CACHE[wad] = list(t.md.key_positions())
+        except Exception:
+            _KEY_CACHE[wad] = []
+    return _KEY_CACHE[wad]
+
+
 class Shaper:
-    def __init__(self, env, ticks: int):
+    def __init__(self, env, ticks: int, wad: str | None = None):
         self.ticks = ticks
         self.steps = 0
         p = env.privileged_state()
@@ -86,6 +109,8 @@ class Shaper:
         self.opened: set[int] = set()
         self.visited: set[tuple[int, int]] = set()
         self.doors = dict(env.mapinfo.door_sectors)
+        self.key_targets = key_positions(str(wad)) if wad is not None else []
+        self.key_prev: float | None = None
 
     def reset_map(self):
         self.opened.clear()
@@ -94,6 +119,20 @@ class Shaper:
     def step(self, env, p, builder) -> tuple[float, dict]:
         r = 0.0
         comp = {}
+        # Dense potential toward the nearest uncollected key.  This is training
+        # only; the shipped actor never receives privileged positions.
+        if self.key_targets:
+            held = np.asarray(p["keys"]) > 0.5
+            rem = [(x, y) for x, y, lock in self.key_targets
+                   if not held[_LOCK_TO_KEY.get(lock, 0)]]
+            if rem:
+                d = min(math.hypot(x - p["x"], y - p["y"]) for x, y in rem)
+                if self.key_prev is not None and d < self.key_prev:
+                    r += 0.002 * (self.key_prev - d)
+                    comp["key_potential"] = 0.002 * (self.key_prev - d)
+                self.key_prev = d
+            else:
+                self.key_prev = None
         if p["exit_reached"]:
             r += 10.0
             comp["exit"] = 10.0
@@ -152,6 +191,8 @@ class Slot:
         self.turn_held = 0
         self.use_last = 0
         self.ticks = 2100
+        self.steps = 0
+        self.cap = 0
 
     def reset(self, progress: float):
         from doom_env import make_env
@@ -163,8 +204,9 @@ class Slot:
         obs, _ = self.env.reset(seed=int(np.random.default_rng().integers(0, 2**31 - 1)))
         self.builder = MapBuilder()
         self.prev, self.turn_held, self.use_last = None, 0, 0
+        self.steps = 0
         self.builder.update(obs, None)
-        self.shaper = Shaper(self.env, ticks)
+        self.shaper = Shaper(self.env, ticks, wad)
         return obs
 
 
@@ -182,6 +224,10 @@ def main() -> None:
     ap.add_argument("--n-envs", type=int, default=N_ENVS)
     ap.add_argument("--rollout", type=int, default=T_ROLLOUT)
     ap.add_argument("--start-update", type=int, default=0)
+    ap.add_argument("--suite", action="store_true")
+    ap.add_argument("--freeze-goal", action="store_true")
+    ap.add_argument("--lr", type=float, default=LR)
+    ap.add_argument("--episode-cap", type=int, default=0)
     args = ap.parse_args()
 
     torch.set_num_threads(max(1, (torch.get_num_threads() // 2)))
@@ -189,9 +235,15 @@ def main() -> None:
     if args.init:
         net.load_state_dict(torch.load(args.init, map_location=args.device)["model"])
         print("initialised from", args.init)
-    opt = torch.optim.AdamW(net.parameters(), lr=LR, weight_decay=1e-4)
-    sampler = Sampler(0)
+    if args.freeze_goal:
+        for p in net.goal_head.parameters():
+            p.requires_grad_(False)
+        print("goal head frozen")
+    opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
+    sampler = Sampler(0, suite=args.suite)
     slots = [Slot(sampler) for _ in range(args.n_envs)]
+    for s in slots:
+        s.cap = args.episode_cap
     obs = [s.reset(0.0) for s in slots]
     h = [None for _ in slots]
     out = Path(args.out)
@@ -225,6 +277,9 @@ def main() -> None:
             for i, s in enumerate(slots):
                 a = actions
                 o, r, term, trunc, info = s.env.step(a[i])
+                s.steps += 1
+                if s.cap and s.steps >= s.cap:
+                    trunc = True
                 p = s.env.privileged_state()
                 shaped, _ = s.shaper.step(s.env, p, s.builder)
                 ep_returns[i] += shaped
@@ -268,14 +323,14 @@ def main() -> None:
                     obs_win = {k: torch.stack([buf["obs"][t][k][i] for t in range(start, start + WINDOW)])
                                for k in buf["obs"][0]}
                     # add batch dimension and run through the encoder/GRU
-                    obs_win = {k: v.unsqueeze(0) for k, v in obs_win.items()}
-                    hh = buf["h"][start][i].view(1, 1, -1)
+                    obs_win = {k: v.unsqueeze(0).to(args.device) for k, v in obs_win.items()}
+                    hh = buf["h"][start][i].view(1, 1, -1).to(args.device)
                     emb = net.encode({k: v for k, v in obs_win.items()})
                     logits, value, aux, _ = net.forward_seq(emb, hh)
-                    act = torch.stack([buf["act"][t][i] for t in range(start, start + WINDOW)]).unsqueeze(0)
-                    oldlp = torch.stack([buf["logp"][t][i] for t in range(start, start + WINDOW)]).unsqueeze(0).detach()
-                    adv_w = adv[start:start + WINDOW, i].unsqueeze(0)
-                    ret_w = ret[start:start + WINDOW, i].unsqueeze(0)
+                    act = torch.stack([buf["act"][t][i] for t in range(start, start + WINDOW)]).unsqueeze(0).to(args.device)
+                    oldlp = torch.stack([buf["logp"][t][i] for t in range(start, start + WINDOW)]).unsqueeze(0).detach().to(args.device)
+                    adv_w = adv[start:start + WINDOW, i].unsqueeze(0).to(args.device)
+                    ret_w = ret[start:start + WINDOW, i].unsqueeze(0).to(args.device)
                     lp, ent = net.action_logprob_entropy(logits, act)
                     ratio = (lp - oldlp).exp()
                     s1 = ratio * adv_w
@@ -300,9 +355,12 @@ def main() -> None:
             log.flush()
             torch.save({"model": net.state_dict(), "config": {"hidden": net.hidden},
                         "update": update}, out / "ckpt.pt")
+            if (update + 1) % 10 == 0:
+                torch.save({"model": net.state_dict(), "config": {"hidden": net.hidden},
+                            "update": update}, out / f"ckpt_u{update + 1:03d}.pt")
         # decay entropy/lr
         for g in opt.param_groups:
-            g["lr"] = LR * (1.0 - 0.8 * progress)
+            g["lr"] = args.lr * (1.0 - 0.8 * progress)
     torch.save({"model": net.state_dict(), "config": {"hidden": net.hidden},
                 "update": args.updates}, out / "ckpt.pt")
     print("saved", out / "ckpt.pt")

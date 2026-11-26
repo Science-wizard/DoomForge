@@ -2089,3 +2089,40 @@ threshold 0.5 collapses to PPO (0/8 drills). Drift: 63°→16° heading, 907→3
 *Prepared 2026-11-26. Measured numbers are from this repository; literature claims are
 cited by arXiv ID or venue. Official scoring weights remain unknown; all proxy scores are
 assumptions and should be reported as such.*
+---
+
+## Afterword — what the Phase 3 build changed in this review
+
+The literature review above argued for hierarchical goal conditioning, map-centric
+memory, and balanced expert data. Building and measuring them produced four
+concrete corrections:
+
+1. **Goal conditioning helps navigation but is not a substitute for local
+   control.** The learned goal head reaches 5.7° median bearing error on the
+   training distribution and drives C0/C5 success from 0% to 100%. On the
+   two-key C6 map the policy still parked one tile short of the red door with a
+   perfect goal; an observation-only anti-freeze reflex, not a better goal, fixed
+   it. Hierarchy solves *what* to pursue, not *how* to recover.
+2. **A benchmark can be wrong in the same way a model can.** The room
+   generator's locks were usually optional (5/30 tier-4 maps actually required a
+   key; 0/30 required two), so the "key" categories measured nothing. Purpose-
+   built cut-edge drills were necessary before any architecture comparison was
+   meaningful. This is the benchmark analogue of leakage.
+3. **DAgger is not automatically safe.** Student rollouts with β=0 produced 73%
+   turn labels because the student froze; behaviour cloning collapsed to 99.8%
+   spin. DAgger needs teacher mixing, stuck-tail downsampling, or a trust region;
+   otherwise it poisons the prior it was meant to correct.
+4. **Mixture-of-experts routing works when the cue is perception, not a learned
+   black box.** The earlier gate failed on t2–t4. A router that asks "is an enemy
+   visible?" and hands combat to a frozen specialist restored 7/12 tier-1 exits
+   and 25 kills while keeping the key categories at 100%, with no privileged
+   state. The trade-off is interpretability and a hard behavioural boundary, not
+   accuracy.
+
+These findings align with the hierarchical-RL and options literature (goal
+abstraction reduces horizon; low-level recovery still needs coverage) and with
+the procedural-content literature (distribution validity is an empirical
+property, not a generator claim). They also reinforce the review's original
+conclusion: on a 1-CPU, 8 GB budget, a compact recurrent policy with a
+deterministic spatial memory and a small set of learned goals is a stronger use
+of parameters than a large end-to-end model.

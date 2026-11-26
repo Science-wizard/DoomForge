@@ -671,3 +671,24 @@ run after every promoted checkpoint.
 | 68 Freedoom maps | Deferred | Wrapper IWAD is `freedoom2.wad`; verify Freedoom 1 textures before relying on it |
 | Docker validate as an hour-1 gate | Deferred | Docker daemon unavailable and official image private; local validator is the gate |
 | Fully learned memory claim | Rejected | The writer is deterministic; describe it honestly as perception + learned readout |
+
+---
+
+## Phase 3 addendum (executed)
+
+Revision 2's 24-hour cut was extended with a Phase 3 built around a 14-category
+diagnostic suite. The approved architecture (Atlas-G) is implemented as:
+
+- map v2 (6×32×32, frontier channel), learned goal head (8-vector + type),
+  goal-conditioned worker, same 1.87 M-parameter GRU backbone;
+- suite-driven DAgger/PPO sampling and a paired promotion gate;
+- a perception-routed hybrid: Atlas-G for navigation/keys/doors, frozen PPO-25
+  for visible combat, plus an observation-only freeze reflex.
+
+New gate (fast, 5 maps/category × 1 seed): promote iff the paired tier-weighted
+proxy delta has a 95% CI above zero and no category has a statistically
+significant >10-point regression. Full split (30 maps × 5 seeds) is reserved
+for the submission decision.
+
+Measured result: PPO-25 +1.18 → hybrid +5.80 (paired +4.63, CI +2.73…+6.80),
+gate PROMOTE on validation. Test split remains untouched until the final run.

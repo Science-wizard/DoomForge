@@ -34,9 +34,11 @@ NUM_ENTITY_TYPES = 12
 VITALS = 17
 RGB_H, RGB_W = 30, 40
 PREV = 12
-MAP_CH, MAP_H, MAP_W = 5, 32, 32
+MAP_CH, MAP_H, MAP_W = 6, 32, 32
 POSE = 6
-GATE_IN = 30
+GATE_IN = 31
+GOAL = 8
+GOAL_TYPES = 4
 HIDDEN = 384
 
 HEADS = (("move", 3), ("strafe", 3), ("turn", 3), ("attack", 2), ("use", 2), ("next", 2))
@@ -226,6 +228,30 @@ class Gate(nn.Module):
         return torch.sigmoid(self.net(f))
 
 
+class GoalHead(nn.Module):
+    """Predicts the ego-relative goal vector (8) and goal type (4) from the fused obs."""
+
+    def __init__(self, inp: int = 640, hidden: int = 64):
+        super().__init__()
+        self.net = nn.Sequential(nn.Linear(inp, hidden), nn.GELU(),
+                                 nn.Linear(hidden, hidden), nn.GELU())
+        self.vec = nn.Linear(hidden, GOAL)
+        self.type_head = nn.Linear(hidden, GOAL_TYPES)
+
+    def forward(self, base: torch.Tensor):
+        h = self.net(base)
+        return torch.tanh(self.vec(h)), self.type_head(h)
+
+
+class GoalEncoder(nn.Module):
+    def __init__(self, out: int = 32):
+        super().__init__()
+        self.net = nn.Sequential(nn.Linear(GOAL, 32), nn.GELU(), nn.Linear(32, out), nn.GELU())
+
+    def forward(self, g: torch.Tensor) -> torch.Tensor:
+        return self.net(g)
+
+
 class DoomNet(nn.Module):
     def __init__(self, hidden: int = HIDDEN):
         super().__init__()
@@ -237,7 +263,9 @@ class DoomNet(nn.Module):
         self.prev = PrevEncoder(32)
         self.map = MapEncoder(128)
         self.pose = PoseEncoder(32)
-        self.fuse = nn.Sequential(nn.Linear(640, hidden), nn.GELU())
+        self.goal_head = GoalHead(640, 64)
+        self.goal = GoalEncoder(32)
+        self.fuse = nn.Sequential(nn.Linear(672, hidden), nn.GELU())
         self.gru = nn.GRU(hidden, hidden, batch_first=True)
         self.trunk = nn.Sequential(nn.Linear(hidden, hidden), nn.GELU())
         self.actor = nn.Linear(hidden, sum(HEAD_SIZES))
@@ -245,7 +273,7 @@ class DoomNet(nn.Module):
         self.aux = nn.Linear(hidden, AUX_SIZE)
 
     # ------------------------------------------------------------------ encoding
-    def encode(self, obs: dict) -> torch.Tensor:
+    def encode_with_goal(self, obs: dict):
         lead = obs["rays_dist"].shape[:-1]
         n = math.prod(lead) if lead else 1
         r = self.ray(obs["rays_dist"].reshape(n, 64), obs["rays_hit"].reshape(n, 64))
@@ -256,18 +284,33 @@ class DoomNet(nn.Module):
         p = self.prev(obs["prev_action"].reshape(n, PREV))
         m = self.map(obs["map"].reshape(n, MAP_CH, MAP_H, MAP_W))
         q = self.pose(obs["pose"].reshape(n, POSE))
-        z = self.fuse(torch.cat([r, e, v, g, p, m, q], dim=-1))
-        return z.reshape(*lead, -1) if lead else z
+        base = torch.cat([r, e, v, g, p, m, q], dim=-1)
+        gv, gt = self.goal_head(base)
+        ge = self.goal(gv)
+        z = self.fuse(torch.cat([base, ge], dim=-1))
+        if lead:
+            z = z.reshape(*lead, -1)
+            gv = gv.reshape(*lead, GOAL)
+            gt = gt.reshape(*lead, GOAL_TYPES)
+        return z, gv, gt
+
+    def encode(self, obs: dict) -> torch.Tensor:
+        z, _, _ = self.encode_with_goal(obs)
+        return z
 
     def forward_seq(self, emb: torch.Tensor, h: torch.Tensor | None = None):
         y, h = self.gru(emb, h)
         z = self.trunk(y)
         return self.actor(z), self.critic(z), self.aux(z), h
 
+    def forward_step_full(self, obs: dict, h: torch.Tensor | None = None):
+        emb, gv, gt = self.encode_with_goal(obs)
+        logits, value, aux, h = self.forward_seq(emb.unsqueeze(1), h)
+        return logits[:, 0], value[:, 0], aux[:, 0], gv, gt, h
+
     def forward_step(self, obs: dict, h: torch.Tensor | None = None):
-        emb = self.encode(obs).unsqueeze(1)
-        logits, value, aux, h = self.forward_seq(emb, h)
-        return logits[:, 0], value[:, 0], aux[:, 0], h
+        logits, value, aux, gv, gt, h = self.forward_step_full(obs, h)
+        return logits, value, aux, h
 
     # ------------------------------------------------------------------ helpers
     @staticmethod

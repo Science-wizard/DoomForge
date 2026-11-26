@@ -195,3 +195,95 @@ p50/p99 latency. Suites: `gen_val`, `freedoom_eval` (MAP23–32), `ood`, `all`.
 | `training/maps/` | generator, drills, Freedoom prep |
 | `training/teacher/` | privileged expert (training only) |
 | `validate.py` | official validator (untouched) |
+
+---
+
+## 5. Atlas-G v1 (Phase 3)
+
+Atlas-G keeps Baseline A's encoders and GRU and adds a learned goal interface and
+a frontier map channel. It is trained on the diagnostic suite, not just generated
+tiers.
+
+### 5.1 What changed
+
+| Component | Baseline A | Atlas-G v1 |
+|---|---|---|
+| Map memory | 5×32×32 @ 64 u/cell | **6×32×32**: visited, wall, door, locked door, item/key, **frontier** |
+| Goal signal | none | **GoalHead(640→64) → 8-vector + 4-way type**, encoded to 32 and fused into the 672→384 projection |
+| Aux heads | exit visibility/bearing/distance, keys, door, damage | unchanged |
+| Action heads | 6 factorised heads (15 logits) | unchanged |
+| Parameters | 1.807 M | **1.867 M** |
+| Inference | p50 0.86 ms CPU | same budget (goal head adds ~0.01 ms) |
+
+The goal vector is ego-relative: `[dx/512, dy/512, dist/1024, sin(rel), cos(rel),
+type/4, mask, 0]`. Type is exit/key/frontier/other. During BC/DAgger the label is
+the privileged teacher's current objective; at inference the head predicts it
+from the observation, so the shipped agent never sees privileged state.
+
+### 5.2 What is deliberately not in v1
+
+The approved proposal also listed a 96×96 map at 64 u/cell, scan matching,
+event tokens, an 8-step goal manager and an asymmetric critic. v1 keeps the
+32×32 deterministic map and per-step goal prediction because the measured
+bottleneck was not map resolution: it was wall recovery and key-lock sequencing,
+which the suite found immediately. The larger map and manager are gated on the
+suite showing a spatial-resolution or goal-thrash failure; the probe set
+(door-angle, corruption, memory-wipe, determinism) is how that decision is made.
+
+### 5.3 Training stack (measured)
+
+| workload | MLX GPU | PyTorch CPU | PyTorch MPS |
+|---|---:|---:|---:|
+| 2 M-param MLP, 256×512 | **4.2 ms** | 11.2 ms | 11.3 ms |
+| DoomNet 16×128 fwd+bwd | — | 3.50 s | **0.22 s** |
+
+Training runs on MPS; environments, the suite runner and data collection run on
+all 10 CPU threads. MLX is not used for the policy because the recurrent graph
+loses its advantage; the measured MLP win does not transfer.
+
+### 5.4 Suite coupling
+
+- `ppo.py --suite` samples the train split with a 30/50/20 mastered/current/
+  hardest mix, plus dense training-only potential shaping toward uncollected
+  keys.
+- `dagger.py --source suite` labels student failure states (used once; the
+  unbalanced run is documented as a dead end in `progress.md`).
+- Every candidate is scored with `training/suite/run.py`; promotion uses
+  `training/suite/compare.py` (paired bootstrap + per-category floors).
+
+### 5.5 Atlas-H: perception-routed hybrid (shipped candidate)
+
+Two experts are loaded from `submission/weights/`:
+
+| file | expert | role |
+|---|---|---|
+| `doomforge.pt` | Atlas-G v1 (BC + suite DAgger/key demos) | navigation, exploration, keys, doors |
+| `combat.pt` | Phase-2 PPO-25 (v1, no goal head) | visible combat |
+
+Both networks are evaluated on every observation so their recurrent state and
+the deterministic map stay current. The **router reads only the observation**:
+if any entity of type `enemy_melee` / `enemy_hitscan` / `enemy_projectile` is
+visible, the combat expert is selected for at least 16 decisions (hysteresis);
+otherwise the Atlas-G expert runs. No privileged state, category label, or map
+name is used.
+
+A deterministic **safety reflex** handles the freeze modes found by the suite:
+if no enemy is visible and the policy has pressed forward for 8 decisions with
+forward velocity ≈ 0, it turns for 4 decisions; if it has emitted a pure no-op
+for 8 decisions, it nudges forward + USE. The reflex is a supervisor: the
+policy's own action (not the override) is fed back as ``prev_action`` so its
+learned dynamics stay in distribution, while the environment executes the
+override. This fixed C6 (0/5 → 5/5), C3
+(0/5 → 3/5) and C8 (1/5 → 3/5) on the validation suite and is disabled in
+combat, leaving the arena expert untouched.
+
+Cost: two 1.8 M-parameter forward passes, no extra env state. The official
+validator measures p50 1.7 ms, p99 2.0 ms, max 3 ms per step (single model was
+p50 0.8 ms, p99 1.0 ms), well inside the 21 s per-episode budget.
+
+Why a hybrid rather than one network: the suite showed the failure modes are
+anti-correlated. PPO-25 wins arena combat (t1 6/8, C2 80%) but circles in
+corridors (C0 0%, C5 0%); Atlas-G solves C0/C3/C5/C8 but is worse in open
+combat. A single policy trained on all of it catastrophically forgot one side
+(BC v5: C5 100% but t1 0/12; PPO v2: mean return up but C5 0/5). Routing on a
+perception cue the agent already possesses is the measured best of both.

@@ -20,7 +20,7 @@ import numpy as np
 MAP_SIZE = 64
 MAP_CELL = 96.0
 CROP = 32
-CHANNELS = 5  # visited, wall, door, locked door, item/key
+CHANNELS = 6  # visited, wall, door, locked door, item/key, frontier
 # Measured per-decision turn deltas (degrees), keyed by warm-up step and turn run.
 # Table from PLAN.md Appendix A / host measurement:
 #   warm 0 (first action after reset): 0.000, 3.516, 14.063, 14.063 ...
@@ -140,6 +140,16 @@ class MapBuilder:
                 cx, cy = self.world_to_cell(self.px + d * math.cos(ang), self.py + d * math.sin(ang))
                 if 0 <= cx < MAP_SIZE and 0 <= cy < MAP_SIZE:
                     self.grid[4, cy, cx] = 1
+
+        # frontier: visited free cells adjacent to an unknown cell
+        visited = self.grid[0] > 0
+        known = (self.grid[0] > 0) | (self.grid[1] > 0) | (self.grid[2] > 0) | \
+                (self.grid[3] > 0) | (self.grid[4] > 0)
+        front = np.zeros_like(visited, dtype=np.uint8)
+        front[1:-1, 1:-1] = (visited[1:-1, 1:-1] & (
+            (~known[:-2, 1:-1]) | (~known[2:, 1:-1]) |
+            (~known[1:-1, :-2]) | (~known[1:-1, 2:]))).astype(np.uint8)
+        self.grid[5] = front
 
     # ------------------------------------------------------------------ readout
     def crop(self) -> np.ndarray:

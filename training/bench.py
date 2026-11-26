@@ -53,20 +53,31 @@ def build_suite(n_maps: int) -> list[tuple[str, str, str, int]]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--ckpt", required=True)
+    ap.add_argument("--ckpt", default="")
     ap.add_argument("--out", default="training/runs/bench")
     ap.add_argument("--maps", type=int, default=12)
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--no-freedoom", action="store_true")
+    ap.add_argument("--agent", action="store_true")
     args = ap.parse_args()
 
-    net = load_net(args.ckpt, args.device)
+    if not args.agent and not args.ckpt:
+        raise SystemExit("--ckpt is required unless --agent is used")
+    agent = None
+    if args.agent:
+        from types import SimpleNamespace
+        from submission.agent import DoomAgent
+        agent = DoomAgent(None, SimpleNamespace(shape=(9,)), args.device)
+        net = None
+    else:
+        net = load_net(args.ckpt, args.device)
     suite = build_suite(args.maps)
     if args.no_freedoom:
         suite = [s for s in suite if s[0] != "freedoom"]
     rows = []
     for label, wad, map_name, ticks in suite:
-        r = run_agent_episode(net, wad, map_name, device=args.device, seed=0, ticks=ticks)
+        r = run_agent_episode(net, wad, map_name, device=args.device, seed=0, ticks=ticks,
+                              agent=agent)
         r["label"] = label
         rows.append(r)
         print(f"{label:8s} {Path(wad).stem:12s} exit={int(r['exit'])} steps={r['steps']:4d} "

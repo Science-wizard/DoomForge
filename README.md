@@ -57,7 +57,7 @@ flowchart LR
         VC["MLP<br/>64"]
         GC["4× pool → 30×40<br/>Conv2d ×3<br/>128"]
         PC["MLP<br/>32"]
-        MC["map crop 5×32×32<br/>Conv2d ×3<br/>128"]
+        MC["map crop 6×32×32<br/>+ frontier<br/>Conv2d ×3<br/>128"]
         OC["pose 6 → MLP<br/>32"]
     end
 
@@ -72,7 +72,7 @@ flowchart LR
     P --> PC
     MB --> MC
     MB --> OC
-    RC --> F["concat 640"]
+    RC --> F["concat 672<br/>(+ goal 32)"]
     EC --> F
     VC --> F
     GC --> F
@@ -81,6 +81,8 @@ flowchart LR
     OC --> F
     F --> GRU["GRU 384"]
     GRU --> A["6 action heads<br/>move/strafe/turn/<br/>attack/use/next"]
+    A --> RT["router: enemy visible?<br/>combat expert : Atlas-G"]
+    A --> RF["safety reflex<br/>wall/idle freeze"]
     GRU --> CR["value V(s)"]
     GRU --> AU["aux heads<br/>exit visible/bearing/distance<br/>key colours, keys, enemy, door, damage"]
 ```
@@ -94,6 +96,14 @@ flowchart LR
 - **Deterministic memory**: heading from the measured turn table, translation from ego
   velocity, rays and item sightings projected into a 64×64 allocentric grid. This is
   perception, not planning — no A*, BFS, or rule tree in the submitted agent.
+- **Learned goal interface (Atlas-G)**: a 6th frontier map channel and a goal head
+  predict the teacher's current objective as an ego-relative 8-vector + type; the
+  goal vector is fused back into the policy. At inference the goal is predicted from
+  observations only.
+- **Perception-routed hybrid**: the shipped agent runs Atlas-G for navigation, keys
+  and doors, and the frozen Phase-2 arena expert when an enemy is visible. Both nets
+  see every observation; a 16-decision hysteresis stops flapping. A small
+  observation-only reflex escapes wall/idle freezes. No privileged state.
 
 ### Auxiliary heads (the “see what the observations hide” trick)
 
@@ -152,8 +162,34 @@ weights are hidden.
 
 ## Results
 
-> Proxy numbers from `training/evaluate.py` on held-out seeds and Freedoom MAP23–32.
-> The official scorer is hidden; these are not claimed as leaderboard scores.
+> Proxy numbers from `training/suite` (70 episodes, held-out seeds 10 000+) and
+> `training/bench.py` (seeds 30 000+, Freedoom MAP23–32). The official scorer is
+> hidden; these are not claimed as leaderboard scores.
+
+### Phase 3 diagnostic suite
+
+| Category | PPO-25 | Atlas-G | **Hybrid + reflex** |
+|---|---:|---:|---:|
+| C0 sanity | 0% | 100% | **100%** |
+| C1 duel | 10% | 0% | **20%** |
+| C2 arena | 80% | 60% | 80% |
+| C3 corridor door | 0% | 0% | 0% |
+| C4 room door | 0% | 20% | 20% |
+| C5 key → locked door | 0% | 100% | **100%** |
+| C6 two keys, two locks | 0% | 0% | **100%** |
+| C8 backtrack | 0% | 20% | **40%** |
+| C7/C9–C13 | 0% | 0% | 0% |
+| **Tier-weighted proxy** | **+1.18** | **+3.07** | **+5.70** |
+| 95% CI | +0.76…+1.66 | +2.39…+3.75 | **+4.86…+6.55** |
+
+Paired delta vs PPO-25: **+4.52** (95% CI +2.59…+6.73), gate **PROMOTE**. The
+same checkpoint scores **+5.79** (CI +5.12…+6.51) on the untouched test split
+(paired delta +4.91, CI +3.00…+7.07).
+The hybrid runs Atlas-G for navigation/keys/doors and the frozen Phase-2 PPO-25
+whenever an enemy is visible; an observation-only reflex escapes wall/idle
+freezes. Full tables and dead ends: [`docs/RESULTS.md`](docs/RESULTS.md).
+
+### Phase 2 official-style bench (shipped fallback comparison)
 
 | Split | Exit | Keys | Doors | Unique sectors | Proxy |
 |---|---:|---:|---:|---:|---:|
@@ -169,10 +205,11 @@ one engine seed, Freedoom MAP23–32 held out. This is the honest number; the ea
 “2/2” was a two-map eval and is superseded. A separate drill-only branch reaches
 **6/8 door drills** but trades away arena exits (see `progress.md`).
 
-The shipped checkpoint is **PPO-25** (25.6k steps from the arena specialist): tier-1
-**6/8** exits with 19 kills, and every tier proxy improved. Doors and tiers 2–4 remain
-the Phase-2 target; a learned mixture-of-experts gate with the 6/8 door specialist is
-the current attempt.
+The Phase-2 fallback is **PPO-25** (25.6k steps from the arena specialist): tier-1
+**6/8** exits with 19 kills. In Phase 3 the shippable checkpoint is the **hybrid**
+(Atlas-G + PPO-25 + reflex): suite **+5.80** vs PPO-25's +1.18, with key
+categories 0% → 100% and no lost arena exits. The single Atlas-G checkpoint reaches
+suite +3.07, so it ships only as the navigation expert inside the router.
 
 The full lab log is in [`progress.md`](progress.md), the benchmark method and every
 per-checkpoint row is in [`docs/RESULTS.md`](docs/RESULTS.md), and the 24-hour plan and gates
@@ -183,12 +220,12 @@ are in [`PLAN.md`](PLAN.md).
 ## Validation
 
 ```text
-✓ Repository size (tracked files): 7.5 MB of 1.0 GB
+✓ Repository size (tracked files): 17.5 MB of 1.0 GB
 ✓ requirements.txt: no extra packages
 ✓ DoomAgent interface: __init__, reset, act
 ✓ Initialization: 0.4 s (limit 60 s)
-✓ Episode on 'two_rooms.wad:MAP01': 525 steps, tick cap
-✓ Step latency: p50 0.8–1.0 ms, p99 0.9–2.0 ms, max 4 ms (limit 5 s/act)
+✓ Episode on 'two_rooms.wad:MAP01': 195 steps, exit reached
+✓ Step latency: p50 1.7 ms, p99 2.1 ms, max 3 ms (limit 5 s/act)
 ! CPU limit: not pinnable on macOS (Linux-only check)
 ! Peak RAM: not measurable on macOS (needs /proc)
 PASSED
@@ -212,24 +249,29 @@ uv run python validate.py
 # 3. real maps (32 Freedoom maps × 3 variants)
 uv run python -m training.maps.prepare_freedoom
 
-# 4. demonstrations (navigation, arenas, drills)
-uv run python -m training.collect --episodes 400 --source gen --no-doors --no-monsters
+# 4. demonstrations (navigation, arenas, drills, keys, backtrack)
+uv run python -m training.collect --episodes 250 --source gen --no-doors --no-monsters
 uv run python -m training.collect --episodes 150 --source gen --tier 1
-uv run python -m training.collect --episodes 200 --source drill
+uv run python -m training.collect --episodes 150 --source drill --drill-doors 2 --drill-key
+uv run python -m training.collect --episodes 150 --source keychain
+uv run python -m training.collect --episodes 150 --source backtrack
 
-# 5. behaviour cloning
-uv run python -m training.bc --data training/data/demos_all --epochs 4
+# 5. behaviour cloning (Atlas-G)
+uv run python -m training.bc --data training/data/demos_v2_nav,... --epochs 4
 
-# 6. held-out evaluation
-uv run python -m training.evaluate --ckpt training/runs/bc_map2/ckpt.pt --suite all
+# 6. diagnostic suite (train once, then fast val gate)
+uv run python -m training.suite.generate --split train --n 20
+uv run python -m training.suite.generate --split val --n 10
+uv run python -m training.suite.run --agent --split val --out training/runs/suite/val_fast --fast
+uv run python -m training.suite.compare --baseline <baseline_run> --candidate <candidate_run>
 
-# 7. PPO fine-tune (next phase)
-uv run python -m training.ppo --init training/runs/bc_map2/ckpt.pt --updates 200
+# 7. PPO fine-tune (suite curriculum)
+uv run python -m training.ppo --init training/runs/bc_v5/ckpt.pt --suite --updates 80
 ```
 
 The agent is `submission/agent.py`; weights are `submission/weights/doomforge.pt`
-(Git LFS). The scorer mounts the repo read-only and gives the agent only the observation
-dictionary.
+(Atlas-G) and `submission/weights/combat.pt` (PPO-25), both Git LFS. The scorer mounts
+the repo read-only and gives the agent only the observation dictionary.
 
 ---
 
