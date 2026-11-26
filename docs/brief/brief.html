@@ -190,7 +190,7 @@ reflex. The teacher, A*, BFS and door-state code live only under <code>training/
 <code>submission/</code>.</li>
 <li>Weights in <code>submission/weights/</code> via Git LFS; repository ≪ 1 GB; no data shards committed.</li>
 <li>Deterministic argmax; explicit recurrent state; no network, engine or disk access at inference.</li>
-<li>Validator: init 0.4 s (limit 60 s), p50 1.7 ms / p99 2.0 ms (limit 5 s), dry-run episode reached the exit in 195 steps.</li>
+<li>Validator: init 0.4 s (limit 60 s), p50 1.6 ms / p99 2.2 ms (limit 5 s), dry-run episode reached the exit in 195 steps.</li>
 </ul>
 </div>
 <div class="panel">
@@ -198,11 +198,11 @@ reflex. The teacher, A*, BFS and door-state code live only under <code>training/
 <table>
 <tr><th>Budget</th><th class="num">Limit</th><th class="num">Ours</th></tr>
 <tr><td>Init</td><td class="num">60 s</td><td class="num">0.4 s</td></tr>
-<tr><td>Per decision</td><td class="num">40 ms avg</td><td class="num">1.7 ms</td></tr>
-<tr><td>Any act()</td><td class="num">5 s</td><td class="num">2.0 ms p99</td></tr>
+<tr><td>Per decision</td><td class="num">40 ms avg</td><td class="num">1.6 ms</td></tr>
+<tr><td>Any act()</td><td class="num">5 s</td><td class="num">2.2 ms p99</td></tr>
 <tr><td>RAM</td><td class="num">8 GB</td><td class="num">&lt; 1 GB</td></tr>
 <tr><td>VRAM</td><td class="num">2 GB</td><td class="num">&lt; 0.1 GB (CPU path)</td></tr>
-<tr><td>Repo</td><td class="num">1 GB</td><td class="num">42.6 MB</td></tr>
+<tr><td>Repo</td><td class="num">1 GB</td><td class="num">43.3 MB</td></tr>
 </table>
 <p class="small">Official scoring weights are hidden; the brief reports proxy components, never a claimed
 leaderboard score.</p>

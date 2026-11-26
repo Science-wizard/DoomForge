@@ -268,12 +268,12 @@ are in [`PLAN.md`](PLAN.md).
 ## Validation
 
 ```text
-✓ Repository size (tracked files): 42.6 MB of 1.0 GB
+✓ Repository size (tracked files): 43.3 MB of 1.0 GB
 ✓ requirements.txt: no extra packages
 ✓ DoomAgent interface: __init__, reset, act
 ✓ Initialization: 0.4 s (limit 60 s)
 ✓ Episode on 'two_rooms.wad:MAP01': 195 steps, exit reached
-✓ Step latency: p50 1.7 ms, p99 2.0 ms, max 6 ms (limit 5 s/act)
+✓ Step latency: p50 1.6 ms, p99 2.2 ms, max 6 ms (limit 5 s/act)
 ! CPU limit: not pinnable on macOS (Linux-only check)
 ! Peak RAM: not measurable on macOS (needs /proc)
 PASSED
