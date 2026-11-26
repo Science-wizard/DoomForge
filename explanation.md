@@ -181,9 +181,8 @@ exception inside `act` returns a valid zero action and resets, so the agent
 never crashes a map. No network access, no disk writes, no imports from
 `training/`.
 
-(The agent can still load older checkpoint formats and an optional routed
-combat expert if those weight files are present; the shipped configuration is a
-single Atlas-E network, `route_combat=false`.)
+`agent.py` is about 150 lines: there is no router, reflex or rule-based override
+anywhere in it.
 
 ---
 
@@ -435,8 +434,7 @@ laptop for ~1.6M steps.
 ```
 submission/            what the scorer runs
   agent.py             DoomAgent: sanitise → EgoMap → network → seeded sampling
-  model.py             Atlas-E (and the older Atlas-G) network definition
-  model_v1.py          oldest checkpoint format (compatibility only)
+  model.py             Atlas-E network definition
   mapmem.py            EgoMap: dead reckoning + heading-up two-scale map
   weights/doomforge.pt shipped Atlas-E checkpoint (Git LFS)
 training/              never imported by the agent

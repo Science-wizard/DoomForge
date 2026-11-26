@@ -165,4 +165,4 @@ uv run python validate.py
 Promotion requires the paired 95% CI of the tier-weighted proxy difference to
 exclude zero. A category regression larger than 10 points with a CI excluding
 zero blocks it. The shipped checkpoint is saved with
-`config = {arch: "ego", temperature: 1.0, route_combat: false}`.
+`config = {arch: "ego", temperature: 1.0}`.

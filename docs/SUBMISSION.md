@@ -64,14 +64,13 @@ It checks:
 ## Final artifact
 
 - `submission/weights/doomforge.pt`: Atlas-E (2.00 M acting parameters, 8.4 MB,
-  Git LFS). The config stores `arch=ego`, `temperature=1.0` and
-  `route_combat=false`. The checkpoint also contains the training-only
+  Git LFS). The config stores `arch=ego` and `temperature=1.0`. The checkpoint also contains the training-only
   privileged critic, which the agent never evaluates.
 - `submission/agent.py`: sanitises observations, updates the ego map, runs
   the network and samples the six factorised heads with a generator re-seeded
   on every `reset()`.
 - `submission/mapmem.py`: `EgoMap` (dead reckoning and the heading-up two-scale map).
-- `submission/model.py`, `submission/model_v1.py`: network definitions.
+- `submission/model.py`: network definition.
 - `submission/requirements.txt`: empty (base image only).
 
 Validator: PASS, init 0.4 s, p50 1.6 ms / p99 1.9 ms per decision.

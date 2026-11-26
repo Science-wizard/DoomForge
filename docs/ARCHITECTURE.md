@@ -49,8 +49,7 @@ seeded sampling per head (temperature 1) ─► 9 buttons
 | Pose | dead-reckoned x/2048, y/2048 (clipped), sin/cos heading, forward/right velocity /16 |
 | Cost | ~0.55 ms per decision (NumPy) |
 
-`MapBuilder(legacy=True)` keeps the older world-aligned 6-channel map for older
-checkpoint formats; the shipped agent does not use it.
+`EgoMap` extends `MapBuilder`, which holds the shared odometry.
 
 ## 4. Network (`submission/model.py`, `DoomNet(arch="ego")`)
 
@@ -96,8 +95,7 @@ p50 1.6 ms / p99 1.9 ms in the official validator.
 
 - `__init__`: `torch.set_num_threads(1)`, loads `weights/doomforge.pt` on CPU
   (or CUDA if offered), reads the architecture from the state dict and the
-  acting config (`temperature`, `route_combat`) from the checkpoint, and runs
-  three warm-up decisions.
+  sampling temperature from the checkpoint config, and runs three warm-up decisions.
 - `reset()`: clears the GRU state, previous-action bookkeeping and the map, and
   re-seeds the sampling generator (seed 12345).
 - `act()`: sanitise → map update → forward → sample six heads → 9 buttons.
@@ -105,10 +103,7 @@ p50 1.6 ms / p99 1.9 ms in the official validator.
   action input. Any exception returns a valid zero action and resets.
 - No network, engine, disk writes or `training/` imports.
 
-Compatibility paths, inactive in the shipped configuration: older Atlas-G/v1
-checkpoints, an optional perception-routed combat expert (`combat.pt`), and a
-corridor-door specialist (`specialist.pt`). They activate only if those weight
-files are present and the config allows them.
+`agent.py` contains no routing, reflex or rule-based override: it is map → network → sample.
 
 ## 6. Module map
 
@@ -116,7 +111,6 @@ files are present and the config allows them.
 |---|---|
 | `submission/agent.py` | evaluation entry point |
 | `submission/model.py` | network definitions (`arch="ego"` shipped) |
-| `submission/mapmem.py` | `EgoMap` and the legacy `MapBuilder` |
-| `submission/model_v1.py` | oldest checkpoint format (compatibility) |
+| `submission/mapmem.py` | `EgoMap` (and `MapBuilder`, its odometry base class) |
 | `submission/weights/doomforge.pt` | shipped checkpoint (Git LFS, 8.4 MB) |
 | `training/` | maps, teacher, demos, BC, PPO, suite (see `training/README.md`) |

@@ -30,6 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 OFFICIAL_IMAGE = os.environ.get("DOOM_IMAGE", "ghcr.io/reinforce-sst/devforge-doom:latest")
+LOCAL_IMAGE = "devforge-doom"  # `docker build -t devforge-doom .` from this repo
 DEFAULT_MAP = "maps/two_rooms.wad"
 DEFAULT_TICKS = 2100
 LARGE_FILE_BYTES = 50 * 1024**2
@@ -146,6 +147,56 @@ def check_requirements(repo: Path) -> None:
         report(WARN, "requirements.txt", f"pin exact versions (pkg==x.y.z): {', '.join(unpinned[:5])}")
     else:
         report(OK, "requirements.txt", f"{len(lines)} extra package(s)" if lines else "no extra packages")
+
+
+def _norm(name: str) -> str:
+    import re
+
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def check_imports(repo: Path) -> None:
+    """Warn about packages that submission/ imports and that are installed here, but are neither in
+    the official image (docker/requirements.lock) nor in submission/requirements.txt. A common slip:
+    `uv add something` for local work, then the scorer's environment doesn't have it."""
+    import ast
+    import importlib.metadata as md
+    import re
+
+    lock = ROOT / "docker" / "requirements.lock"
+    if not lock.is_file():
+        return
+    allowed = {_norm(m.group(1)) for m in re.finditer(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==", lock.read_text(), re.M)}
+    allowed |= {"doom-env", "vizdoom", "pip", "setuptools"}
+    req = repo / "submission" / "requirements.txt"
+    if req.is_file():
+        for ln in req.read_text(errors="replace").splitlines():
+            m = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", ln.split("#")[0])
+            if m:
+                allowed.add(_norm(m.group(1)))
+    local = {p.stem if p.suffix == ".py" else p.name for base in (repo / "submission", repo) if base.is_dir()
+             for p in base.iterdir() if p.suffix == ".py" or p.is_dir()}
+    modules: set[str] = set()
+    for path in (repo / "submission").rglob("*.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue  # the interface check reports it
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules |= {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                modules.add(node.module.split(".")[0])
+    dists = md.packages_distributions()
+    missing = {}
+    for mod in sorted(modules - set(sys.stdlib_module_names) - local):
+        names = dists.get(mod)
+        if names and not any(_norm(d) in allowed for d in names):
+            missing[mod] = names[0]
+    if missing:
+        listed = ", ".join(f"{m} ({d}=={md.version(d)})" for m, d in missing.items())
+        report(WARN, "Imports", f"not in the official image or requirements.txt: {listed}. "
+               "Add them to submission/requirements.txt or your agent won't start at evaluation")
 
 
 # --------------------------------------------------------------------------- 2. interface
@@ -318,7 +369,7 @@ def dry_run(repo: Path, device: str, maps: list[str], ticks: int) -> bool:
     env_vars = {**os.environ, "PYTHONUNBUFFERED": "1", **L.THREAD_ENV}
     cpu = one_cpu()
     proc = subprocess.Popen(
-        [sys.executable, "-m", "doom_env.remote", "serve", "--socket", str(sock_path), "--repo", str(repo), "--device", device],
+        [sys.executable, "-m", "doom_env.remote", "serve", "--socket", remote.address(server), "--repo", str(repo), "--device", device],
         stdout=log, stderr=subprocess.STDOUT, env=env_vars, cwd=tmp,
         preexec_fn=(lambda: os.sched_setaffinity(0, cpu)) if cpu else None,
     )
@@ -418,11 +469,35 @@ def dry_run(repo: Path, device: str, maps: list[str], ticks: int) -> bool:
 
 
 # --------------------------------------------------------------------------- docker
+def _have_image(image: str) -> bool:
+    return subprocess.run(["docker", "image", "inspect", image], capture_output=True).returncode == 0
+
+
+def resolve_image(image: str, explicit: bool) -> str | None:
+    """The image to validate in: present locally, else pulled. Without --image, a locally built
+    `devforge-doom` is used when the official image can't be found."""
+    if _have_image(image):
+        return image
+    if not explicit and _have_image(LOCAL_IMAGE):
+        print(f"(using the locally built image '{LOCAL_IMAGE}'; {image} is not available here)", flush=True)
+        return LOCAL_IMAGE
+    print(f"$ docker pull {image}", flush=True)
+    if subprocess.call(["docker", "pull", image]) == 0:
+        return image
+    print(f"\nThe image {image} is not available. Build it from this repository instead:\n"
+          f"    docker build -t {LOCAL_IMAGE} .\n"
+          f"    python validate.py --docker --image {LOCAL_IMAGE}", file=sys.stderr)
+    return None
+
+
 def run_in_docker(repo: Path, image: str, gpus: bool, maps: list[str], ticks: int) -> int:
     """Like the scorer: requirements.txt installed with network into a separate dir, then the agent
     runs with no network, a read-only filesystem and the repo mounted read-only."""
     if not shutil.which("docker"):
         print("docker not found. Install Docker or run without --docker.", file=sys.stderr)
+        return 2
+    image = resolve_image(image, explicit=image != OFFICIAL_IMAGE)
+    if image is None:
         return 2
     work = Path(tempfile.mkdtemp(prefix="doom-validate-docker-"))
     deps = work / "deps"
@@ -486,6 +561,8 @@ def main() -> int:
     ap.add_argument("--in-docker", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
     repo = Path(args.repo).resolve()
+    if os.name == "nt":
+        os.system("")  # enables ANSI colours in the classic Windows console
 
     if args.docker:
         try:
@@ -508,6 +585,8 @@ def main() -> int:
     if not args.in_docker:
         check_size(repo, limits.MAX_REPO_BYTES)
     check_requirements(repo)
+    if not args.in_docker:
+        check_imports(repo)
     if check_interface(repo):
         dry_run(repo, args.device, args.maps or [DEFAULT_MAP], args.ticks)
 
