@@ -31,7 +31,7 @@ inline preview.
 |---|---|
 | ![C0](docs/assets/videos/C0_sanity_10000.gif)<br>**C0 sanity** · 64 steps · exit · [MP4](docs/assets/videos/C0_sanity_10000.mp4) | ![C5](docs/assets/videos/C5_key_lock_10000.gif)<br>**C5 key → locked door** · 268 steps · [MP4](docs/assets/videos/C5_key_lock_10000.mp4) |
 | ![C6](docs/assets/videos/C6_two_key_10000.gif)<br>**C6 two keys, two locks** · 393 steps · [MP4](docs/assets/videos/C6_two_key_10000.mp4) | ![C2](docs/assets/videos/C2_arena_10001.gif)<br>**C2 arena combat** · 218 steps · exit · [MP4](docs/assets/videos/C2_arena_10001.mp4) |
-| ![C4](docs/assets/videos/C4_room_door_10003.gif)<br>**C4 room-wall door** · 146 steps · exit · [MP4](docs/assets/videos/C4_room_door_10003.mp4) | ![C8](docs/assets/videos/C8_backtrack_10000.gif)<br>**C8 backtrack** · 400 steps · exit · [MP4](docs/assets/videos/C8_backtrack_10000.mp4) |
+| ![C3](docs/assets/videos/C3_corridor_door_10000.gif)<br>**C3 corridor door** · 73 steps · exit · [MP4](docs/assets/videos/C3_corridor_door_10000.mp4) | ![C8](docs/assets/videos/C8_backtrack_10000.gif)<br>**C8 backtrack** · 400 steps · exit · [MP4](docs/assets/videos/C8_backtrack_10000.mp4) |
 
 <sub>Prefer real video? Open the [MP4 gallery](docs/assets/videos/README.md) with inline players.</sub>
 
@@ -221,18 +221,18 @@ weights are hidden.
 | C0 sanity | 0% | 100% | **100%** |
 | C1 duel | 10% | 0% | **20%** |
 | C2 arena | 80% | 60% | 80% |
-| C3 corridor door | 0% | 0% | 0% |
-| C4 room door | 0% | 20% | 20% |
+| C3 corridor door | 0% | 0% | **100%** |
+| C4 room door | 0% | 20% | 0% (test 60%) |
 | C5 key → locked door | 0% | 100% | **100%** |
 | C6 two keys, two locks | 0% | 0% | **100%** |
 | C8 backtrack | 0% | 20% | **40%** |
 | C7/C9–C13 | 0% | 0% | 0% |
-| **Tier-weighted proxy** | **+1.18** | **+3.07** | **+5.70** |
-| 95% CI | +0.76…+1.66 | +2.39…+3.75 | **+4.86…+6.55** |
+| **Tier-weighted proxy** | **+1.18** | **+3.07** | **+6.20** |
+| 95% CI | +0.76…+1.66 | +2.39…+3.75 | **+5.46…+6.98** |
 
-Paired delta vs PPO-25: **+4.52** (95% CI +2.59…+6.73), gate **PROMOTE**. The
-same checkpoint scores **+5.79** (CI +5.12…+6.51) on the untouched test split
-(paired delta +4.91, CI +3.00…+7.07).
+Paired delta vs PPO-25: **+5.03** (95% CI +3.08…+7.25), gate **PROMOTE**. The
+same checkpoint scores **+6.40** (CI +5.72…+7.08) on the untouched test split
+(paired delta +5.51, CI +3.59…+7.69).
 The hybrid runs Atlas-G for navigation/keys/doors and the frozen Phase-2 PPO-25
 whenever an enemy is visible; an observation-only reflex escapes wall/idle
 freezes. Full tables and dead ends: [`docs/RESULTS.md`](docs/RESULTS.md).
@@ -268,12 +268,12 @@ are in [`PLAN.md`](PLAN.md).
 ## Validation
 
 ```text
-✓ Repository size (tracked files): 17.5 MB of 1.0 GB
+✓ Repository size (tracked files): 42.6 MB of 1.0 GB
 ✓ requirements.txt: no extra packages
 ✓ DoomAgent interface: __init__, reset, act
 ✓ Initialization: 0.4 s (limit 60 s)
 ✓ Episode on 'two_rooms.wad:MAP01': 195 steps, exit reached
-✓ Step latency: p50 1.7 ms, p99 2.1 ms, max 3 ms (limit 5 s/act)
+✓ Step latency: p50 1.7 ms, p99 2.0 ms, max 6 ms (limit 5 s/act)
 ! CPU limit: not pinnable on macOS (Linux-only check)
 ! Peak RAM: not measurable on macOS (needs /proc)
 PASSED
@@ -393,15 +393,15 @@ validate.py         official validator (untouched)
 
 ## Phase 3 status and next
 
-Shipped: the perception-routed hybrid (Atlas-G + PPO-25 + reflex), val +5.70,
-test +5.79, validator PASS. Known gaps, in priority order:
+Shipped: the perception-routed hybrid (Atlas-G + PPO-25 + corridor-door
+specialist + reflex), val **+6.20**, test **+6.40**, validator PASS. Known gaps,
+in priority order:
 
 1. **C7/C9–C13** (exploration, ambush, scarce ammo, gauntlet, Freedoom, OOD) are still
    0% exits. The next training round should add exploration demonstrations and
    resource-aware combat; a full 30-map × 5-seed test is reserved for that candidate.
-2. **C3 corridor door** regressed when the map pose was made correct during reflex
-   turns. A learned recovery policy trained with the reflex in the loop should fix it
-   without the pose compromise.
+2. **C4 room door** is 0% on validation and 60% on test; the corridor specialist does
+   not generalise to room-wall doors. A room-door specialist is the next small expert.
 3. **Learned router**: replace the enemy-visibility rule with a small gate trained on
    the suite's category outcomes; keep the rule as the fallback and the gate must beat
    it on the paired gate.

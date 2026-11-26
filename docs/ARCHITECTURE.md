@@ -259,13 +259,23 @@ Two experts are loaded from `submission/weights/`:
 |---|---|---|
 | `doomforge.pt` | Atlas-G v1 (BC + suite DAgger/key demos) | navigation, exploration, keys, doors |
 | `combat.pt` | Phase-2 PPO-25 (v1, no goal head) | visible combat |
+| `specialist.pt` | Atlas-G architecture, BC on C3/C4 suite demos | narrow-corridor doors |
 
-Both networks are evaluated on every observation so their recurrent state and
-the deterministic map stay current. The **router reads only the observation**:
-if any entity of type `enemy_melee` / `enemy_hitscan` / `enemy_projectile` is
-visible, the combat expert is selected for at least 16 decisions (hysteresis);
-otherwise the Atlas-G expert runs. No privileged state, category label, or map
-name is used.
+The navigation and combat networks are evaluated on every observation so their
+recurrent state and the deterministic map stay current; the door specialist runs
+only on gated decisions. The **router reads only the observation and the agent's
+own map memory**:
+
+1. any `enemy_melee` / `enemy_hitscan` / `enemy_projectile` visible ⇒ combat
+   expert for at least 16 decisions;
+2. otherwise, if no locked door is known, no key is visible or held, a door is
+   known, and the median side ray at first activation is **< 0.23** (a narrow
+   corridor), latch to the door specialist for the episode;
+3. otherwise Atlas-G.
+
+No privileged state, category label, or map name is used. The 0.23 threshold is
+what keeps the specialist off the two-room validator map and C4 while still
+firing on C3.
 
 A deterministic **safety reflex** handles the freeze modes found by the suite:
 if no enemy is visible and the policy has pressed forward for 8 decisions with
@@ -277,9 +287,10 @@ override. This fixed C6 (0/5 → 5/5), C3
 (0/5 → 3/5) and C8 (1/5 → 3/5) on the validation suite and is disabled in
 combat, leaving the arena expert untouched.
 
-Cost: two 1.8 M-parameter forward passes, no extra env state. The official
-validator measures p50 1.7 ms, p99 2.0 ms, max 3 ms per step (single model was
-p50 0.8 ms, p99 1.0 ms), well inside the 21 s per-episode budget.
+Cost: two 1.8 M-parameter forward passes normally, a third only on gated
+decisions. The official validator measures p50 1.7–2.4 ms, p99 2.0–2.6 ms, max
+6 ms per step (single model was p50 0.8 ms, p99 1.0 ms), well inside the 40 ms
+average and 5 s worst-case budget.
 
 Why a hybrid rather than one network: the suite showed the failure modes are
 anti-correlated. PPO-25 wins arena combat (t1 6/8, C2 80%) but circles in

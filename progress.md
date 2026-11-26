@@ -547,3 +547,31 @@ router (each expert sees its own last action, not the other's). That restored
 C2 from 0% to 80% on val; a map-pose fix (`prev_exec` for the deterministic map)
 then traded C3 back to 0% for correct pose integration. We kept the correct
 version: C3 is one category, the map state is used by every navigation decision.
+
+### Next phase: C3 closed by a gated door specialist
+
+A third expert (BC from BC v5 on 150 C3 + 150 C4 suite teacher demos, anchor
+0.5) solves C3 5/5 but forgets C5/C6 (0/5), so it is only used behind an
+observation-only gate: no enemy, no locked door, no key seen/held, a door known,
+and median side ray <0.23 at first activation. The decision latches. C4 and the
+validator two-room map are wider than 0.23 and stay on the generalist.
+
+Final fast suite (70 episodes):
+
+| split | proxy | 95% CI | C3 | C4 | C5 | C6 | C0 | C2 |
+|---|---:|---|---:|---:|---:|---:|---:|---:|
+| val | **+6.196** | +5.46…+6.98 | 100% | 0% | 100% | 100% | 100% | 80% |
+| test | **+6.397** | +5.72…+7.08 | 100% | 60% | 100% | 100% | 100% | 40% |
+
+Paired delta vs PPO-25: **+5.03 val** (CI +3.08…+7.25), **+5.51 test**
+(CI +3.59…+7.69), gate PROMOTE. Validator dry run exits in 195 steps again.
+
+Dead ends this phase: ungated BC v6/v7 (C0/C5 collapsed to 0–1/5), visible-door
+controller (C5 5/5 → 0/5), 10/16-step blind reflex (C3 stayed 0), logit blending
+(C2 5/5 → 3/5, C5 3/3 → 0/3), pure frontier controller on C7 (0/5), and teacher
+demos on Freedoom/ambush/resource (0/3, no usable labels).
+
+Remaining: C4 room doors (0% val / 60% test), C7 exploration, C9–C13 combat/
+resource/transfer/OOD. The teacher fails these 0/3, so the next step is a
+stronger combat/exploration teacher or PPO on the existing arena data, not more
+of the same labels.

@@ -219,7 +219,7 @@ def main() -> None:
     ap.add_argument("--episodes", type=int, default=100)
     ap.add_argument("--out", default="training/data/demos")
     ap.add_argument("--source", default="gen", choices=("gen", "freedoom", "freedoom_nav", "drill", "roomdoor", "keychain",
-                              "backtrack", "mix"))
+                              "backtrack", "suite", "mix"))
     ap.add_argument("--split", default="train", choices=("train", "val"))
     ap.add_argument("--tier", type=int, default=0, help="0 = randomise 2..4")
     ap.add_argument("--no-doors", action="store_true")
@@ -228,6 +228,7 @@ def main() -> None:
     ap.add_argument("--max-steps", type=int, default=1200)
     ap.add_argument("--drill-doors", type=int, default=2)
     ap.add_argument("--drill-key", action="store_true")
+    ap.add_argument("--categories", default="", help="suite source: comma-separated C3_corridor_door,...")
     args = ap.parse_args()
 
     out = Path(args.out)
@@ -237,6 +238,16 @@ def main() -> None:
     freedoom_mon = [Path(f"maps/freedoom_open/{m}.wad") for m in FREEDOOM_TRAIN]
     rng = np.random.default_rng(args.seed)
     seed0, seed1 = GEN_TRAIN if args.split == "train" else GEN_VAL
+    suite_rows = []
+    if args.source == "suite":
+        import json as _json
+        suite_rows = [_json.loads(l) for l in
+                      Path("training/data/suite/train/manifest.jsonl").read_text().splitlines() if l.strip()]
+        if args.categories:
+            cats = set(args.categories.split(","))
+            suite_rows = [r for r in suite_rows if r["category"] in cats]
+        if not suite_rows:
+            raise SystemExit("no suite rows for the requested categories")
 
     t0 = time.time()
     n_exit = 0
@@ -268,6 +279,9 @@ def main() -> None:
             spec = generate_map(seed, tier, "training/data/maps",
                                 no_doors=args.no_doors, no_monsters=args.no_monsters)
             wad, map_name, tag = str(spec.path), spec.map_name, f"gen_t{tier}"
+        elif src == "suite":
+            row = suite_rows[i % len(suite_rows)]
+            wad, map_name, tag = row["wad"], row["map_name"], row["category"]
         elif src in ("freedoom_nav", "freedoom"):
             pool = freedoom if src == "freedoom_nav" else freedoom_mon
             if not pool:

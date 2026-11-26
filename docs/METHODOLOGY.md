@@ -123,6 +123,9 @@ These fixes turned key/backtrack demonstrations from 0% teacher success into
 | key drill (2 doors + key) | 150 | 150 exits | C5 skill |
 | key chain (2 keys/2 locks) | 150 | 150 exits | C6 skill |
 | backtrack (key behind spawn) | 150 | 150 exits | C8 skill |
+| C3 suite teacher demos | 150 | 150 exits | corridor-door specialist |
+| C4 suite teacher demos | 150 | 143 exits | room-door data |
+| C7 suite teacher demos | 120 | 54 exits | exploration (not used in shipped expert) |
 | suite DAgger | 191 | student 25 exits | failure-state labels |
 
 Episodes store rays, entities, vitals, RGB, prev action, map crop, pose, keys,
@@ -161,17 +164,21 @@ DAgger needs teacher mixing, stuck-tail downsampling or a trust region.
 
 ## 9. Architecture and routing
 
-The shipped system has three parts:
+The shipped system has four parts:
 
 1. **Atlas-G v1** (1.87 M parameters): ray/entity/vitals/RGB/prev/map/pose
    encoders → 672-dim concat with goal encoding → GRU(384) → factorised heads +
    value + auxiliary heads.
 2. **Frozen PPO-25** (1.81 M, v1): the Phase-2 arena specialist.
-3. **Perception router + reflex**: both nets run on every observation; if an
-   enemy is visible the combat expert is selected for at least 16 decisions,
-   otherwise Atlas-G. An observation-only reflex turns after 8 blocked-forward
-   decisions and presses forward+USE after 8 pure no-ops; it is disabled in
-   combat. The policy's own action, not the override, is fed back as
+3. **Door specialist** (1.87 M, Atlas-G architecture): BC on 300 C3/C4 suite
+   teacher demos, anchored to BC v5. It solves C3 5/5 but forgets C5/C6, so it is
+   only used behind a gate.
+4. **Perception router + reflex**: enemies visible ⇒ PPO-25 for ≥16 decisions.
+   Otherwise, if no locked door/key is known and a door is visible and the first
+   side-ray median is <0.23 (narrow corridor), latch to the door specialist for
+   the episode; otherwise Atlas-G. An observation-only reflex turns after 8
+   blocked-forward decisions and presses forward+USE after 8 pure no-ops,
+   disabled in combat. The policy's own action, not the override, is fed back as
    `prev_action`; the deterministic map integrates the executed action.
 
 Details and the parameter table are in [`ARCHITECTURE.md`](ARCHITECTURE.md).
@@ -235,12 +242,15 @@ may not have a GPU), with p50 1.7 ms / p99 2.1 ms.
 
 ## 14. Limitations and next phase
 
-- C3 corridor door is 0% in the final correct-pose agent; the reflex fixed it
-  only when map pose ignored reflex turns. A learned recovery policy trained with
-  the reflex in the loop is the principled fix.
+- C3 is closed by the gated corridor specialist (100% val and test). The gate is
+  deliberately conservative; C4 (room-wall doors) is 0% val / 60% test because
+  the specialist does not generalise to rooms and the generalist remains weak.
 - C7 exploration and C9–C13 (ambush, scarce ammo, gauntlet, Freedoom, OOD) are
-  still 0% exits. They need exploration demonstrations, resource-aware combat and
-  a transfer fine-tune.
+  still 0% exits. The teacher itself fails these maps 0/3, so the bottleneck is
+  label quality and combat/exploration policy, not the suite.
+- Attempts that failed are recorded in `RESULTS.md`: ungated BC fine-tunes,
+  visible-door controllers, longer blind reflexes, logit blending and a pure
+  frontier controller.
 - The learned router is a perception rule, not a learned gate; it is intentionally
   simple and auditable.
 - The full 30-map × 5-seed test has not been run; the fast test is 70 episodes.

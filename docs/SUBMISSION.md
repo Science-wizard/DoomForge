@@ -67,6 +67,9 @@ It checks:
   frontier map). Navigation, exploration, keys and doors.
 - `submission/weights/combat.pt` — frozen Phase-2 PPO-25 (1.81 M parameters).
   Selected whenever an enemy is visible; both nets see every observation.
+- `submission/weights/specialist.pt` — corridor-door expert (1.87 M), selected
+  only behind the conservative narrow-corridor gate described in
+  `docs/ARCHITECTURE.md` §5.5.
 - `submission/agent.py` — loads both, routes with a 16-decision enemy-visibility
   hysteresis, and applies an observation-only anti-freeze reflex outside combat.
 - `submission/model_v1.py` — the v1 network definition needed to deserialize the

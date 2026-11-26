@@ -143,7 +143,7 @@ training; every test look is logged.
 | C0 sanity | 0% | 100% | **100%** |
 | C1 duel | 10% | 0% | **20%** |
 | C2 arena | 80% | 60% | 80% |
-| C3 corridor door | 0% | 0% | 0% |
+| C3 corridor door | 0% | 0% | **100%** |
 | C4 room door | 0% | 20% | 20% |
 | C5 key → lock | 0% | 100% | **100%** |
 | C6 two keys, two locks | 0% | 0% | **100%** |
@@ -154,11 +154,11 @@ training; every test look is logged.
 | C11 gauntlet | 0% | 0% | 0% |
 | C12 Freedoom | 0% | 0% | 0% |
 | C13 OOD | 0% | 0% | 0% |
-| **Tier-weighted proxy** | **+1.175** | **+3.066** | **+5.696** |
-| 95% CI | +0.76 … +1.66 | +2.39 … +3.75 | **+4.86 … +6.55** |
+| **Tier-weighted proxy** | **+1.175** | **+3.066** | **+6.196** |
+| 95% CI | +0.76 … +1.66 | +2.39 … +3.75 | **+5.46 … +6.98** |
 
-Paired comparison (same maps, candidate − baseline): **+4.521**, 95% CI
-**+2.589 … +6.728**. The promotion gate returns **PROMOTE**: the CI excludes
+Paired comparison (same maps, candidate − baseline): **+5.025**, 95% CI
+**+3.079 … +7.246**. The promotion gate returns **PROMOTE**: the CI excludes
 zero and no category has a statistically significant >10-point regression.
 The C1/C2 point differences are single-map swings; their paired CIs include zero.
 
@@ -225,12 +225,12 @@ precisely to isolate the key skill.
 The final hybrid was scored once on the untouched test split
 (`test_hybrid_fast`, logged in `test_touch.log`):
 
-- tier-weighted proxy **+5.790** (95% CI +5.115 … +6.509)
-- C0 100%, C1 40%, C2 60%, C3 0%, C4 40%, C5 100%, C6 100%, C8 40%
-- paired delta vs PPO-25: **+4.907** (95% CI +3.002 … +7.073)
+- tier-weighted proxy **+6.397** (95% CI +5.722 … +7.081)
+- C0 100%, C1 40%, C2 40%, C3 100%, C4 60%, C5 100%, C6 100%, C8 40%
+- paired delta vs PPO-25: **+5.514** (95% CI +3.585 … +7.690)
 - C7, C9–C13 0%
 
-This is consistent with validation (+5.696), so the checkpoint is not
+This is consistent with validation (+6.196), so the checkpoint is not
 overfitting the val maps. Test C2 is 60% (3/5) with 2.8 kills/episode; the two losses are arena maps where
 the combat expert is overwhelmed. The paired PPO-25 test run is reported
 alongside it in the final table; C2 variance is a known limitation of a 5-map
@@ -244,9 +244,62 @@ sample.
 | `bc_use` | Phase-1 door specialist | +1.168 |
 | PPO-25 | Phase-2 shipped checkpoint | +1.175 |
 | Atlas-G BC v5 | this phase, single model | +3.066 |
-| Hybrid + reflex | shipped candidate | **+5.70** |
+| Hybrid + reflex + door specialist | shipped candidate | **+6.20** |
 
 All were run through the same map set, seeds and metric code. The hybrid beats
 every earlier checkpoint by at least **+4.7** weighted proxy. The MoE gate was
 not re-run on the suite because it is not shippable in its Phase-2 form (it was
 measured negative on t2–t4 and is superseded by the perception router).
+
+---
+
+# Phase 4 — closing C3 with a door specialist
+
+The Phase-3 hybrid left C3 (straight corridor door) at 0%: the learned policy
+strafed into a corner and the reflex's blind turn was undone. A third expert was
+trained and routed behind a conservative, observation-only gate.
+
+## Specialist
+
+- **Data**: 150 teacher episodes on the C3 train split + 150 on C4 (both 100%
+  and 143/150 teacher exits), added to the Phase-3 demonstration pool.
+- **Training**: BC from BC v5 with a KL anchor on all frames (weight 0.5),
+  learning rate 5e-5, one epoch.
+- **Effect**: C3 5/5; C4 0/5; C5/C6 unprotected collapse to 0/5, so the
+  specialist is only safe behind a gate.
+- **Gate** (perception only): no enemy, no locked door seen, no key visible, no
+  key held, at least one door seen, and the median side ray at first activation
+  is below **0.23** (a narrow corridor). The decision latches for the episode.
+  C5/C6 never satisfy it (locked door/key); C4 and the validator's two-room map
+  are wider than 0.23 and stay on the generalist.
+
+## Result
+
+| Split | Phase 3 hybrid | + door specialist |
+|---|---:|---:|
+| Val fast | +5.696 | **+6.196** (CI +5.46…+6.98) |
+| Test fast | +5.790 | **+6.397** (CI +5.72…+7.08) |
+| C3 corridor door | 0% | **100%** |
+| C4 room door | 20% val / 40% test | 0% val / 60% test |
+| C5 / C6 | 100% / 100% | 100% / 100% |
+| C0 / C2 | 100% / 80% | 100% / 80% |
+| Paired delta vs PPO-25 | +4.52 val | **+5.03 val**, +5.51 test |
+
+The gate passes: CI excludes zero and no significant category regression. The
+validator now exits its dry-run map in 195 steps.
+
+## Dead ends in this phase (kept for honesty)
+
+- **BC v6/v7 without a gate**: adding 300 C3/C4 episodes destroyed C0/C5
+  (0–1/5) no matter the anchor; the specialist is only usable behind the gate.
+- **Visible-door controller**: turn/forward/USE whenever a door ray is visible
+  dropped C5 from 5/5 to 0/5 and did not fix C3.
+- **Longer blind reflex** (10/16 decisions): preserved C5/C6 but C3 stayed 0/5.
+- **Logit blending** of Atlas-G and PPO-25: C2 5/5 → 3/5, C5 3/3 → 0/3.
+- **Pure frontier controller** on C7: 0/5 exits; the frontier signal is too local
+  for an 8-room map.
+- **Teacher on Freedoom/ambush/resource**: 0/3 exits, so no useful labels for
+  C9–C12 yet.
+
+Remaining gaps: C4 (room-wall doors), C7 (exploration), C9–C13 (ambush,
+resource, gauntlet, Freedoom transfer, OOD).

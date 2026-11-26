@@ -25,6 +25,7 @@ ARENA = WEIGHTS_DIR / "arena.pt"
 DOOR = WEIGHTS_DIR / "door.pt"
 GATE = WEIGHTS_DIR / "gate.pt"
 COMBAT = WEIGHTS_DIR / "combat.pt"
+SPECIALIST = WEIGHTS_DIR / "specialist.pt"
 ENEMY_TYPES = (1, 2, 3)
 
 try:  # normal case: the scorer puts submission/ on sys.path
@@ -95,12 +96,22 @@ class DoomAgent:
 
         self.hybrid = False
         self.combat = None
+        self.specialist = None
+        self.has_specialist = False
         if not self.moe and COMBAT.exists() and hasattr(self.net, "goal_head"):
             # Atlas-G for navigation/doors/keys; the frozen Phase-2 PPO-25 for
             # visible combat.  The router only reads the observation.
             try:
                 self.combat = _load(COMBAT, self.device)
                 self.hybrid = True
+                if SPECIALIST.exists():
+                    try:
+                        self.specialist = _load(SPECIALIST, self.device)
+                        self.has_specialist = hasattr(self.specialist, "goal_head")
+                    except Exception as exc:
+                        print(f"[DoomForge] specialist unusable ({exc})", file=sys.stderr)
+                        self.specialist = None
+                        self.has_specialist = False
                 print("[DoomForge] hybrid router: Atlas-G + combat specialist", file=sys.stderr)
             except Exception as exc:
                 print(f"[DoomForge] combat checkpoint unusable ({exc}); single model", file=sys.stderr)
@@ -117,18 +128,22 @@ class DoomAgent:
         self.h_a = None
         self.h_d = None
         self.h_combat = None
+        self.h_spec = None
         self.combat_hold = 0
         self.wall_streak = 0
         self.idle_streak = 0
         self.escape_left = 0
         self.escape_dir = 1
+        self.compass_target = None
+        self.compass_steps = 0
+        self.route_mode = None
         self.prev = None
         self.prev_exec = None
         self.turn_held = 0
         self.use_last = 0
-        self.prev_nav, self.prev_combat = None, None
-        self.turn_nav, self.turn_combat = 0, 0
-        self.use_nav, self.use_combat = 0, 0
+        self.prev_nav, self.prev_combat, self.prev_spec = None, None, None
+        self.turn_nav, self.turn_combat, self.turn_spec = 0, 0, 0
+        self.use_nav, self.use_combat, self.use_spec = 0, 0, 0
         self.map = MapBuilder()
 
     def _batch(self, flat: dict) -> dict:
@@ -180,11 +195,34 @@ class DoomAgent:
                 ve = observation["visible_entities"]
                 mask = np.asarray(ve["mask"]) > 0
                 types = np.asarray(ve["entity_type"])
-                if np.any(mask & np.isin(types, ENEMY_TYPES)):
+                enemy = bool(np.any(mask & np.isin(types, ENEMY_TYPES)))
+                if enemy:
                     self.combat_hold = 16
                 else:
                     self.combat_hold = max(0, self.combat_hold - 1)
                 a_model = combat_a if self.combat_hold > 0 else nav_a
+                gate = (not enemy and self.combat_hold == 0
+                        and not self.map.grid[3].any()
+                        and not bool(np.any(mask & (types == 9)))
+                        and float(np.asarray(observation["vitals"])[8:14].sum()) == 0
+                        and self.map.grid[2].any())
+                if gate and self.route_mode is None:
+                    d = np.asarray(observation["rays"]["distance"])
+                    side = np.concatenate([d[:8], d[-8:]])
+                    self.route_mode = "spec" if float(np.median(side)) < 0.23 else "nav"
+                if (not gate) and (self.map.grid[3].any()
+                                   or float(np.asarray(observation["vitals"])[8:14].sum()) > 0):
+                    self.route_mode = None
+                if gate and self.has_specialist and self.route_mode == "spec":
+                    flat_spec = _flatten(observation, self.prev_spec, self.turn_spec,
+                                         self.use_spec, map_crop=crop, pose=pose)
+                    spec_logits, _, _, self.h_spec = self.specialist.forward_step(
+                        self._batch(flat_spec), self.h_spec)
+                    spec_a = self.net.actions_to_binary(
+                        self.net.flat_action(spec_logits, sample=False))[0].cpu().numpy().astype(np.int8)
+                    self.prev_spec, self.turn_spec, self.use_spec = self._next_prev(
+                        spec_a, self.prev_spec, self.turn_spec, self.use_spec)
+                    a_model = spec_a
                 a = self._reflex(a_model, observation)
                 self.prev = a_model
                 self.prev_exec = a
@@ -234,6 +272,11 @@ class DoomAgent:
             out[4 if self.escape_dir > 0 else 5] = 1
             self.escape_left -= 1
             return out
+        if self.compass_steps > 0:
+            self.compass_steps -= 1
+            out = self._compass_action()
+            if out is not None:
+                return out
         vf = float(np.asarray(observation["vitals"])[14])
         if int(a[0]) and abs(vf) < 0.5:
             self.wall_streak += 1
@@ -245,6 +288,11 @@ class DoomAgent:
             self.idle_streak = 0
         if self.wall_streak >= 8:
             self.wall_streak = 0
+            if self._acquire_compass_target():
+                self.compass_steps = 24
+                out = self._compass_action()
+                if out is not None:
+                    return out
             self.escape_left = 4
             self.escape_dir *= -1
         elif self.idle_streak >= 8:
@@ -253,6 +301,52 @@ class DoomAgent:
             a[0] = 1
             a[7] = 1
         return a
+
+    def _acquire_compass_target(self) -> bool:
+        """Nearest remembered door/locked door, else frontier, in the map crop."""
+        try:
+            crop = self.map.crop()
+            cx, cy = self.map.world_to_cell(self.map.px, self.map.py)
+            ox, oy = cx - 16, cy - 16
+            for channel in (3, 2, 5):
+                cells = np.argwhere(crop[channel] > 0)
+                if len(cells) == 0:
+                    continue
+                d = (cells[:, 0] - 16) ** 2 + (cells[:, 1] - 16) ** 2
+                for k in np.argsort(d):
+                    fy, fx = cells[k]
+                    if (fx, fy) == (16, 16):
+                        continue
+                    wx = (ox + int(fx) - 32 + 0.5) * 96.0
+                    wy = (oy + int(fy) - 32 + 0.5) * 96.0
+                    if np.hypot(wx - self.map.px, wy - self.map.py) > 48:
+                        self.compass_target = (wx, wy)
+                        return True
+        except Exception:
+            pass
+        self.compass_target = None
+        return False
+
+    def _compass_action(self):
+        if self.compass_target is None:
+            return None
+        tx, ty = self.compass_target
+        dx, dy = tx - self.map.px, ty - self.map.py
+        dist = np.hypot(dx, dy)
+        if dist < 48:
+            self.compass_target = None
+            self.compass_steps = 0
+            return None
+        bearing = np.degrees(np.arctan2(dy, dx) - np.radians(self.map.heading))
+        bearing = (bearing + 180.0) % 360.0 - 180.0
+        out = np.zeros(9, np.int8)
+        if abs(bearing) > 12:
+            out[4 if bearing > 0 else 5] = 1
+        elif dist < 110:
+            out[7] = 1
+        else:
+            out[0] = 1
+        return out
 
     # ------------------------------------------------------------------ helpers
     def _warmup(self) -> None:
@@ -278,4 +372,6 @@ class DoomAgent:
                     self.net.forward_step(z, None)
                     if self.hybrid:
                         self.combat.forward_step(z, None)
+                        if self.has_specialist:
+                            self.specialist.forward_step(z, None)
         self.reset()

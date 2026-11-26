@@ -120,13 +120,13 @@ touched for a promotion decision.
 | C0 sanity | 0% | 100% | 100% |
 | C1 duel | 10% | 0% | 20% |
 | C2 arena | 80% | 60% | 80% |
-| C3 corridor door | 0% | 0% | 0% |
-| C4 room door | 0% | 20% | 20% |
+| C3 corridor door | 0% | 0% | 100% |
+| C4 room door | 0% | 20% | 0% |
 | C5 key → lock | 0% | 100% | 100% |
 | C6 two keys | 0% | 0% | 100% |
 | C7 exploration | 0% | 0% | 0% |
 | C8 backtrack | 0% | 20% | 40% |
-| weighted proxy | +1.18 | +3.07 | **+5.70** |
+| weighted proxy | +1.18 | +3.07 | **+6.20** |
 
-Paired delta vs PPO-25: **+4.52** (95% CI +2.59…+6.73), gate **PROMOTE**; test +5.79.
+Paired delta vs PPO-25: **+5.03** (95% CI +3.08…+7.25), gate **PROMOTE**; test +6.40.
 These are validation numbers; test is scored once and logged in `test_touch.log`.

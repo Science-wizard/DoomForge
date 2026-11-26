@@ -160,7 +160,7 @@ def collate(batch: list[dict], device: str) -> dict:
 
 
 def batch_loss(net: DoomNet, batch: dict, anchor: DoomNet | None = None,
-               anchor_weight: float = 0.0) -> tuple[torch.Tensor, dict]:
+               anchor_weight: float = 0.0, anchor_all: bool = False) -> tuple[torch.Tensor, dict]:
     emb, gv, gt = net.encode_with_goal({k: batch[k] for k in
         ("rays_dist", "rays_hit", "ent_feat", "ent_type", "ent_mask", "vitals", "rgb", "prev_action", "map", "pose")})
     logits, value, aux, _ = net.forward_seq(emb)
@@ -218,7 +218,7 @@ def batch_loss(net: DoomNet, batch: dict, anchor: DoomNet | None = None,
             a_logits, _, _, _ = anchor.forward_seq(a_emb)
         # preserve the base policy on non-door frames; let *any* visible door frame change
         door_any = ((batch["rays_hit"] == 2) | (batch["rays_hit"] == 3)).any(-1).float()
-        keep = ((1.0 - door_any) * m)
+        keep = (m if anchor_all else (1.0 - door_any) * m)
         kl_terms = []
         for cur, ref in zip(torch.split(logits, HEAD_SIZES, dim=-1), torch.split(a_logits, HEAD_SIZES, dim=-1)):
             kl_terms.append(F.kl_div(F.log_softmax(cur, -1), F.softmax(ref, -1),
@@ -263,6 +263,7 @@ def main() -> None:
                     help="head: train actor only; trunk: freeze encoders+GRU")
     ap.add_argument("--anchor", default="", help="frozen checkpoint for a KL anchor")
     ap.add_argument("--anchor-weight", type=float, default=0.5)
+    ap.add_argument("--anchor-all", action="store_true")
     ap.add_argument("--success-only", action="store_true")
     args = ap.parse_args()
 
@@ -324,7 +325,7 @@ def main() -> None:
         for b in range(steps_per_epoch):
             idx = chunks[order_chunks[b]]
             batch = collate([train[i] for i in idx], device)
-            loss, parts = batch_loss(net, batch, anchor, args.anchor_weight)
+            loss, parts = batch_loss(net, batch, anchor, args.anchor_weight, args.anchor_all)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
@@ -345,7 +346,7 @@ def main() -> None:
                 vb = []
                 for i in range(0, len(val), args.batch):
                     batch = collate(val[i:i + args.batch], device)
-                    l, _ = batch_loss(net, batch, anchor, args.anchor_weight)
+                    l, _ = batch_loss(net, batch, anchor, args.anchor_weight, args.anchor_all)
                     vb.append(float(l))
                 val_loss = float(np.mean(vb))
             net.train()

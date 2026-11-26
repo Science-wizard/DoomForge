@@ -23,7 +23,7 @@ CLIPS = [
     ("C5_key_lock", 0, "C5 key -> locked door"),
     ("C6_two_key", 0, "C6 two keys, two locks"),
     ("C2_arena", None, "C2 arena combat"),
-    ("C4_room_door", None, "C4 room door"),
+    ("C3_corridor_door", None, "C3 corridor door"),
     ("C8_backtrack", None, "C8 backtrack"),
 ]
 

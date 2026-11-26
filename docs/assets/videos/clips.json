@@ -44,15 +44,15 @@
   "proxy": 11.95
  },
  {
-  "category": "C4_room_door",
-  "map_id": "C4_room_door_10003",
-  "mp4": "docs/assets/videos/C4_room_door_10003.mp4",
-  "gif": "docs/assets/videos/C4_room_door_10003.gif",
-  "steps": 146,
+  "category": "C3_corridor_door",
+  "map_id": "C3_corridor_door_10000",
+  "mp4": "docs/assets/videos/C3_corridor_door_10000.mp4",
+  "gif": "docs/assets/videos/C3_corridor_door_10000.gif",
+  "steps": 73,
   "exit": true,
   "kills": 0,
   "keys": 0,
-  "proxy": 11.4
+  "proxy": 11.7
  },
  {
   "category": "C8_backtrack",
