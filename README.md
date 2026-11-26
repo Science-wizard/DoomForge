@@ -162,7 +162,7 @@ weights are hidden.
 | Generated tier 3 (key → lock) | 0/8 | 0 | 2 | 4.2% | −0.38 |
 | Generated tier 4 (gauntlet) | 0/8 | 0 | 3 | 2.0% | −0.73 |
 | Door drills | 0/8 | 0 | 0 | 47.5% | +0.60 |
-| Freedoom MAP23–32 (unseen) | 0/10* | 0 | 3 | 1.1% | −0.77* |
+| Freedoom MAP23–32 (unseen) | 0/10 | 0 | — | 3.6% | +1.00 |
 
 **Eight maps per generated tier**, fixed bench seeds `30000+` (never used for training),
 one engine seed, Freedoom MAP23–32 held out. This is the honest number; the earlier
@@ -171,8 +171,7 @@ one engine seed, Freedoom MAP23–32 held out. This is the honest number; the ea
 
 The shipped checkpoint is the **arena specialist** (`bc_arena`). Phase 2 must combine
 arena exits and door skills without catastrophic forgetting; the KL-anchored replay
-experiment is the current attempt. *Freedoom numbers are from the earlier tier-1 base;
-the arena specialist has not been re-run on Freedoom at freeze time.
+experiment is the current attempt.
 
 The full lab log is in [`progress.md`](progress.md), the benchmark method and every
 per-checkpoint row is in [`docs/RESULTS.md`](docs/RESULTS.md), and the 24-hour plan and gates
@@ -188,7 +187,7 @@ are in [`PLAN.md`](PLAN.md).
 ✓ DoomAgent interface: __init__, reset, act
 ✓ Initialization: 0.4 s (limit 60 s)
 ✓ Episode on 'two_rooms.wad:MAP01': 525 steps, tick cap
-✓ Step latency: p50 1.0 ms, p99 1.9 ms, max 3 ms (limit 5 s/act)
+✓ Step latency: p50 0.8–1.0 ms, p99 0.9–2.0 ms, max 4 ms (limit 5 s/act)
 ! CPU limit: not pinnable on macOS (Linux-only check)
 ! Peak RAM: not measurable on macOS (needs /proc)
 PASSED

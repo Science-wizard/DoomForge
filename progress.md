@@ -82,17 +82,19 @@ below as evidence, but the status table here is authoritative.
 
 ## Phase 1 close (hand-off to Phase 2)
 
-**Shipped checkpoint:** `training/runs/bc_map2/ckpt_e0.pt` (copied to
-`submission/weights/doomforge.pt`). Map-aware multimodal BC, 1.807 M parameters.
+**Shipped checkpoint:** `training/runs/bc_arena/ckpt.pt` (copied to
+`submission/weights/doomforge.pt`). Map-aware multimodal BC, 1.807 M parameters,
+low-LR arena-specialized fine-tune.
 
 | Check | Result |
 |---|---|
-| Official validator (2 runs) | **PASSED**, init 0.4 s, p50 1.0–1.2 ms, p99 1.7–1.9 ms, max 3 ms |
-| Held-out tier 1 (generated) | **2/2 exits**, 4 kills in one, 100% sector coverage, proxy +11.4 |
-| Held-out tier 2 | 0/2, 5.9% coverage, proxy −1.9 |
-| Held-out tier 3 | 0/2, 3.6% coverage, proxy 0.0 |
-| Held-out tier 4 | 0/2, 2.1% coverage, proxy −2.2 |
-| Door research branch (`bc_use`) | **4/4** on 1-door and key drills, but **0/2 tier 1** (catastrophic forgetting) |
+| Official validator (2 runs) | **PASSED**, init 0.4–0.5 s, p50 0.8–1.0 ms, p99 0.9–2.0 ms, max 4 ms |
+| Broad bench tier 1 (8 maps) | **5/8 exits**, 100% coverage, proxy +5.42 |
+| Broad bench tier 2 | 0/8, 6.1% coverage, proxy −0.18 |
+| Broad bench tier 3 | 0/8, 4.2% coverage, proxy −0.38 |
+| Broad bench tier 4 | 0/8, 2.0% coverage, proxy −0.73 |
+| Freedoom 23–32 (10 maps) | 0/10 exits, 3.6% coverage, proxy +1.00 |
+| Door research branch (`bc_use`) | **6/8** door drills, but 1/8 tier 1 (catastrophic forgetting) |
 | Repo | private `Science-wizard/DoomForge`, LFS weight, tracked size 7.7 MB |
 
 **What was learned:** exits and key colours are invisible to the structured contract and
@@ -101,9 +103,14 @@ observation (turn accuracy stuck at 43–49%); a deterministic pose+map is neces
 cuts drift 4×; door USE is learnable in two epochs from drills but overwrites arena
 behaviour without replay; the validator is not the score.
 
+**Failed iteration:** the focused arena-anchored door merge (`bc_combined`, drills +
+room-doors, KL anchor to `bc_arena`, 1 epoch) measured **tier 1 1/8, drills 0/8**. The
+anchor does not preserve the arena policy with this data mix; doors still do not
+generalise to rooms.
+
 **Phase 2 entry point:** replay-balanced BC/PPO (mix tiers in every batch), event
-tokens + scan matching, Freedoom MAP23–32 held-out evaluation, then freeze at the
-deadline.
+tokens + scan matching, a dedicated door-approach objective, Freedoom MAP23–32
+held-out evaluation, then freeze at the deadline.
 
 ---
 
@@ -156,7 +163,7 @@ return requirement.
 |---|---|
 | Parameters | 1.807 M |
 | Inputs | rays, entities, vitals, RGB, prev action, 5×32×32 map crop, 6-value pose |
-| Validator latency | p50 0.8 ms, p99 1.0 ms (limit 5 s) |
+| Validator latency | p50 1.0 ms, p99 1.9 ms (limit 5 s) |
 | Init | 0.4–0.6 s (limit 60 s) |
 
 ### Door demonstrations (the missing skill)
@@ -223,6 +230,24 @@ The two-map eval was optimistic. A fixed bench (8 maps per generated tier, seeds
 **Findings:** the tier-1 exit rate is 25%, not 100%; doors are learnable (6/8 drills)
 but do not transfer to room doors; freezing the trunk and training only the actor cannot
 learn door approach (0/8 drills). The bench is the selection metric from here on.
+
+### Arena specialization (shipped)
+
+A low-LR fine-tune on 300 extra arena episodes (53% teacher exits) produced the Phase-1
+winner:
+
+| Suite | Before | `bc_arena` |
+|---|---:|---:|
+| tier 1 exits | 2/8 | **5/8** |
+| tier 1 proxy | +0.35 | **+5.42** |
+| tier 2 proxy | −0.99 | **−0.18** |
+| tier 3 proxy | −0.89 | **−0.38** |
+| tier 4 proxy | −1.61 | **−0.73** |
+| Freedoom 23–32 proxy | −0.77 | **+1.00** |
+| Freedoom coverage | 1.1% | **3.6%** |
+
+Tier-weighted proxy over t1–t4: **+3.17** (from −5.40). The checkpoint is copied to
+`submission/weights/doomforge.pt` and is the shipped Phase-1 agent.
 
 ### Room-door demonstrations and KL anchoring
 
