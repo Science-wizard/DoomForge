@@ -81,30 +81,31 @@ selection.
 | Category | Reference | **DoomForge** | DoomForge coverage | DoomForge deaths |
 |---|---:|---:|---:|---:|
 | C0 sanity | 100% | **100%** | 100% | 0% |
-| C1 duel | 20% | **90%** | 100% | 0% |
-| C2 arena | 60% | 50% | 100% | 50% |
+| C1 duel | 20% | **100%** | 100% | 0% |
+| C2 arena | 60% | **90%** | 100% | 10% |
 | C3 corridor door | 100% | **100%** | 100% | 0% |
-| C4 room door | 30% | **100%** | 73% | 0% |
+| C4 room door | 30% | **100%** | 70% | 0% |
 | C5 key → lock | 100% | 80% | 77% | 0% |
 | C6 two keys | 100% | **100%** | 100% | 0% |
-| C7 exploration | 0% | **10%** | 40% | 0% |
+| C7 exploration | 0% | **10%** | 46% | 0% |
 | C8 backtrack | 30% | **100%** | 100% | 0% |
-| C9 ambush | 0% | 0% | 28% | 40% |
-| C10 scarce ammo | 0% | 0% | 16% | 10% |
-| C11 gauntlet | 0% | 0% | 11% | 20% |
-| C12 Freedoom | 0% | 0% | 3% | 70% |
-| C13 OOD | 0% | 0% | 17% | 30% |
-| **Tier-weighted proxy** | +6.11 | **+8.48** | | |
+| C9 ambush | 0% | 0% | 24% | 40% |
+| C10 scarce ammo | 0% | 0% | 21% | 0% |
+| C11 gauntlet | 0% | 0% | 18% | 10% |
+| C12 Freedoom | 0% | 0% | 2% | 70% |
+| C13 OOD | 0% | 0% | 20% | 30% |
+| **Tier-weighted proxy** | +6.11 | **+9.19** | | |
 
-Paired difference **+2.37 (95% CI +1.47…+3.24)**. On C9/C10/C13 DoomForge covers
-3–4× more of the map than the reference (7% / 5% / 6%).
+Shipped weights: Stage D2 (`ppo_ego8` u10 EMA; see the Stage D notes below).
+Paired difference **+3.08 (95% CI +2.20…+3.99)**. On C9/C10/C11/C13 DoomForge
+covers 3.6× / 4.1× / 4.6× / 3.4× more of the map than the reference
+(7% / 5% / 4% / 6%).
 
 ### Validation (two engine seeds, 272 episodes)
 
-**+8.28** vs +6.11, paired **+2.17 (95% CI +1.23…+3.08)**. Exits: C0 100,
-C1 95, C2 50, C3 100, C4 100, C5 100, C6 70, C7 20, C8 100, C9–C13 0. On 3 of
-the 10 C6 validation layouts the agent holds both keys but stops ~130 units
-short of the second lock. On test, C6 is 10/10.
+**+9.46** vs +6.11, paired **+3.35 (95% CI +2.45…+4.30)**. Exits: C0 100,
+C1 100, C2 70, C3 100, C4 100, C5 100, C6 100, C7 10, C8 100, C9 0, C10 10,
+C11 10, C12 0, C13 0.
 
 ### What each design choice contributed
 
@@ -116,13 +117,14 @@ short of the second lock. On test, C6 is 10/10.
 | One PPO network instead of routing to a combat expert | routing cut C2 from 80% to 20% |
 | Seen-floor + stagnation shaping | C7 training exits 3% → 12–15%; first validation exits on C7 |
 | Heavier death/damage cost | arena deaths 8/10 → 5/10 on validation |
+| Circling, wall-hugging and exposure costs (Stage D/D2) | val +8.28 → +9.46; first C10/C11 exits; arena test exits 50% → 90% |
 
 ### Runtime
 
-Official validator: **PASS**. Init 0.4 s; p50 1.6 ms, p99 2.0 ms per decision on
+Official validator: **PASS**. Init 0.4 s; p50 1.5 ms, p99 1.8 ms per decision on
 one CPU thread (budget: 40 ms average). The contract stress test (NaN/inf/mask
 corruption, determinism) passes. On the validator's single dry-run map
-(`two_rooms.wad`), the seeded episode ends with the agent killed at step 301.
+(`two_rooms.wad`), the seeded episode ends with the agent killed at step 468.
 The validator checks the contract and timing, not the outcome.
 
 ### Limitations
@@ -130,10 +132,13 @@ The validator checks the contract and timing, not the outcome.
 Full-length footage of every category, including the failures below, is in
 [`GAMEPLAY.md`](GAMEPLAY.md).
 
-- **No exits on C9–C13.** The agent earns partial credit there (coverage,
-  kills, doors, keys), but these maps combine long exploration with dense combat
-  and need far more than the ~1.6M PPO steps a laptop allowed.
-- **Arena survival.** Half of the C2 test arenas end in death.
+- **Few exits on C9–C13.** 10% on validation gauntlet and scarce-ammo maps,
+  none on test. The agent earns partial credit there (coverage, kills, doors,
+  keys), but these maps combine long exploration with dense combat and need far
+  more than the ~1.8M PPO steps a laptop allowed. The scripted teacher itself
+  only exits 1 in 10 val gauntlets, so better demonstrations come first.
+- **Survival on hard maps.** 40% of ambush and 70% of Freedoom test episodes end
+  in death; arena deaths are down to 10%.
 - **Small per-category samples.** 10 maps per category, and drill categories
   share a layout family, so single categories swing between checkpoints. The
   headline CIs account for this.

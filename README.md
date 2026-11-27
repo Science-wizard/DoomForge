@@ -3,7 +3,7 @@
 # DoomForge
 
 **A 2 M-parameter recurrent agent that explores unseen DOOM levels, fetches keys,
-opens locks and fights, deciding in 1.6 ms on one CPU thread.**
+opens locks and fights, deciding in 1.5 ms on one CPU thread.**
 
 [![Track](https://img.shields.io/badge/Yugaantar%20DevForge-Track%201-b3261e?style=flat-square)](https://github.com/Science-wizard/DoomForge)
 [![Validator](https://img.shields.io/badge/validate.py-PASS-2ea44f?style=flat-square)](#validation)
@@ -145,18 +145,18 @@ weights are hidden, so these are not leaderboard claims):
 
 | Category | Reference design | **DoomForge** |
 |---|---:|---:|
-| C0 sanity · C3 corridor door · C6 two keys | 100% | **100%** |
-| C1 duel | 20% | **90%** |
+| C0 sanity · C1 duel · C3 corridor door · C6 two keys | 100% · 20% · 100% · 100% | **100%** |
 | C4 door on a room wall | 30% | **100%** |
-| C7 multi-room exploration | 0% | **10%** |
 | C8 key behind spawn | 30% | **100%** |
+| C2 arena | 60% | **90%** |
 | C5 key → lock | 100% | 80% |
-| C2 arena | 60% | 50% |
-| C9–C13 (ambush, scarce ammo, gauntlet, Freedoom, OOD) | 0% | 0% exits, 3–4× coverage |
-| **Tier-weighted proxy** | +6.11 | **+8.48** (paired +2.37, CI +1.47…+3.24) |
+| C7 multi-room exploration | 0% | **10%** |
+| C9–C13 (ambush, scarce ammo, gauntlet, Freedoom, OOD) | 0% | 0% exits on test, 3.4–4.6× coverage |
+| **Tier-weighted proxy** | +6.11 | **+9.19** (paired +3.08, CI +2.20…+3.99) |
 
-Validation (two engine seeds): **+8.28** vs +6.11 (paired +2.17, CI
-+1.23…+3.08). Full tables, ablations and limitations:
+Validation (two engine seeds): **+9.46** vs +6.11 (paired +3.35, CI
++2.45…+4.30), including the first gauntlet and scarce-ammo exits (10% each).
+Full tables, ablations and limitations:
 [`docs/RESULTS.md`](docs/RESULTS.md).
 
 ## Validation
@@ -166,8 +166,8 @@ Validation (two engine seeds): **+8.28** vs +6.11 (paired +2.17, CI
 ✓ requirements.txt: no extra packages
 ✓ DoomAgent interface: __init__, reset, act
 ✓ Initialization: 0.4 s (limit 60 s)
-✓ Episode on 'two_rooms.wad:MAP01' runs to completion (301 decisions; this seeded episode ends in death)
-✓ Step latency: p50 1.6 ms, p99 2.0 ms, max 3 ms (limit 5 s/act, 40 ms average)
+✓ Episode on 'two_rooms.wad:MAP01' runs to completion (468 decisions; this seeded episode ends in death)
+✓ Step latency: p50 1.5 ms, p99 1.8 ms, max 3 ms (limit 5 s/act, 40 ms average)
 PASSED
 ```
 
