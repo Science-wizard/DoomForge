@@ -127,6 +127,9 @@ The validator checks the contract and timing, not the outcome.
 
 ### Limitations
 
+Full-length footage of every category, including the failures below, is in
+[`GAMEPLAY.md`](GAMEPLAY.md).
+
 - **No exits on C9–C13.** The agent earns partial credit there (coverage,
   kills, doors, keys), but these maps combine long exploration with dense combat
   and need far more than the ~1.6M PPO steps a laptop allowed.

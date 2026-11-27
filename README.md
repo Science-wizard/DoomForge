@@ -35,6 +35,10 @@ Unedited episodes through the official `DoomAgent` on held-out validation maps.
 <sub>These are illustrative successes; the full per-category table, failures
 included, is in [`docs/RESULTS.md`](docs/RESULTS.md).</sub>
 
+**Full-length footage:** one uncut episode for every one of the 14 suite
+categories — exits, deaths and timeouts, including the categories where the agent
+does not yet exit — is in [`docs/GAMEPLAY.md`](docs/GAMEPLAY.md).
+
 ---
 
 ## The challenge
@@ -182,6 +186,7 @@ decision. DoomForge runs on CPU with an 8.4 MB checkpoint.
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | ego map, network modules, parameter table, acting |
 | [`docs/TRAINING.md`](docs/TRAINING.md) | maps, teacher, demos, BC, PPO, rewards, exact stage settings, code map, commands |
 | [`docs/RESULTS.md`](docs/RESULTS.md) | the 14-category suite, promotion gate, test/validation tables, limitations |
+| [`docs/GAMEPLAY.md`](docs/GAMEPLAY.md) | **full gameplay footage**: one uncut episode per category |
 | [`docs/CONTRACT.md`](docs/CONTRACT.md) · [`docs/RULES.md`](docs/RULES.md) · [`docs/EVALUATION.md`](docs/EVALUATION.md) · [`docs/SUBMISSION.md`](docs/SUBMISSION.md) | official template specs (unchanged) |
 | [`NOTICE.md`](NOTICE.md) · [`LICENSE`](LICENSE) | attribution and licence |
 
@@ -203,8 +208,8 @@ Training from scratch (maps → demos → BC → PPO) is in
 ```
 submission/   agent.py · model.py · mapmem.py · weights/doomforge.pt (Git LFS)
 training/     maps/ · teacher/ · collect.py · egomaps.py · bc.py · ppo2.py · evaluate.py · suite/
-tools/        auto_eval.py · record_videos.py · test_agent_contract.py
-docs/         architecture, training, results, official specs, brief/, assets/videos/
+tools/        auto_eval.py · record_videos.py · record_gallery.py · test_agent_contract.py
+docs/         architecture, training, results, official specs, brief/, assets/videos/ (incl. full/)
 validate.py   official validator (synced with the latest template)
 ```
 

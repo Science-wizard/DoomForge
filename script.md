@@ -2,7 +2,8 @@
 
 About **10 minutes** of speaking, then Q&A. Each section has a suggested slide, the
 spoken script, and the one point the audience must remember. Figures referenced
-are in `docs/brief/assets/` and the gameplay clips in `docs/assets/videos/`.
+are in `docs/brief/assets/` and the gameplay clips in `docs/assets/videos/`
+(full-length episodes: `docs/assets/videos/full/`).
 
 Pacing: roughly 140 words per minute. Times in brackets are cumulative.
 

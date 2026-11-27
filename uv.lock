@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.13"
 
 [[package]]
@@ -127,40 +127,40 @@ wheels = [
 
 [package.optional-dependencies]
 cublas = [
-    { name = "nvidia-cublas", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
-    { name = "nvidia-cuda-nvrtc", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-cublas", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
+    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
 ]
 cudart = [
-    { name = "nvidia-cuda-runtime", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-cuda-runtime", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
 ]
 cufft = [
-    { name = "nvidia-cufft", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
-    { name = "nvidia-nvjitlink", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-cufft", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
 ]
 cufile = [
-    { name = "nvidia-cufile", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-cufile", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 cupti = [
-    { name = "nvidia-cuda-cupti", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-cuda-cupti", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
 ]
 cusolver = [
-    { name = "nvidia-cublas", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
-    { name = "nvidia-cusolver", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
-    { name = "nvidia-cusparse", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
-    { name = "nvidia-nvjitlink", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-cublas", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
+    { name = "nvidia-cusolver", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
+    { name = "nvidia-cusparse", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
 ]
 cusparse = [
-    { name = "nvidia-cusparse", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
-    { name = "nvidia-nvjitlink", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-cusparse", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
 ]
 nvjitlink = [
-    { name = "nvidia-nvjitlink", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-nvjitlink", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
 ]
 nvrtc = [
-    { name = "nvidia-cuda-nvrtc", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
 ]
 nvtx = [
-    { name = "nvidia-nvtx", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-nvtx", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
 ]
 
 [[package]]
@@ -188,6 +188,8 @@ dev = [
     { name = "pytest" },
 ]
 train = [
+    { name = "imageio" },
+    { name = "imageio-ffmpeg" },
     { name = "matplotlib" },
     { name = "torch" },
 ]
@@ -203,6 +205,8 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]
 train = [
+    { name = "imageio", specifier = ">=2.38.2" },
+    { name = "imageio-ffmpeg", specifier = ">=0.6.0" },
     { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "torch", specifier = ">=2.15.0" },
 ]
@@ -318,6 +322,34 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fb/3a/6713c8a92c259fd7619dc93ff19e6e435463f20d3d7b180b14ce99074c10/gymnasium-1.4.0.tar.gz", hash = "sha256:9754f630a32abfdbb76386abe1bc1e706c982db2d62dfa119c9952eb2de7697d", size = 350436, upload-time = "2026-10-05T11:02:16.217Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/38/4e/6a51be94ae8e9dc8eaddd6ea74a6dde754448c4c746b51a232681f81e41c/gymnasium-1.4.0-py3-none-any.whl", hash = "sha256:1cb947c59e7c72d8eabb2c2274c00cd20948e69f8452a9ef4092223be24fdf0e", size = 476306, upload-time = "2026-10-05T11:02:14.783Z" },
+]
+
+[[package]]
+name = "imageio"
+version = "2.38.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pillow" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f1/be/027f866037034c8ccc1791a3df6d630d2e454233f7ba09fbff76ce5aed81/imageio-2.38.2.tar.gz", hash = "sha256:62e338ea5c19a5547521b3b590a8a9ed1177e5d6c3fd1df076029053eacc73ca", size = 404125, upload-time = "2026-11-16T08:43:45.488Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/30/34/7fb055831d4dd5aa9994cc296b61e341f4cd5221c8119b15b0617c721c61/imageio-2.38.2-py3-none-any.whl", hash = "sha256:d71174e7af8369a4f73525c5b1c0d2621eb2827ed3cfd7327560be02ac1b4084", size = 328689, upload-time = "2026-11-16T08:43:43.569Z" },
+]
+
+[[package]]
+name = "imageio-ffmpeg"
+version = "0.8.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/b9/f5887f8fed3f2c145a01a91580f83671ae6753be28fc55ba753bb8a794fc/imageio_ffmpeg-0.8.1.tar.gz", hash = "sha256:9e5162fa482c3c45a6703b2223947d15c37730e63b048d64937fa80243aa5a0c", size = 27375, upload-time = "2026-11-03T13:34:59.439Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/da/24/2c3a7c69453bfb8374ddbbb5007346bad4a4247bc86882f3521cd615f929/imageio_ffmpeg-0.8.1-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:9538a10e598257263b5de1a1c1b86e7603417bc219245b1e279b452e5e48cc20", size = 26974382, upload-time = "2026-11-03T13:34:33.83Z" },
+    { url = "https://files.pythonhosted.org/packages/2b/47/9f9b654f853598bae0850fa22bba168103e45d31b5a2a893ed474f28d54a/imageio_ffmpeg-0.8.1-py3-none-macosx_12_0_arm64.whl", hash = "sha256:5636d691e36e5274b13fe38182b1f627b2e35dcecc63944012c2470f9484fc45", size = 22625474, upload-time = "2026-11-03T13:34:36.985Z" },
+    { url = "https://files.pythonhosted.org/packages/53/02/e139e53a71f33f728cb2ce6c1124edc29e4c008427923f01a4d37f9a1867/imageio_ffmpeg-0.8.1-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:fad3176f859b25869e60a8ed79957d4e3ed74a97a95e5f0cdcb91455f6c6d00e", size = 60956631, upload-time = "2026-11-03T13:34:41.501Z" },
+    { url = "https://files.pythonhosted.org/packages/de/0f/49292fbef69ee10ebcf97bb741602521caafcc6966d5fa1a2b868cc15655/imageio_ffmpeg-0.8.1-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:050d6850601c3b3890bd2b28306f3b842b3daea390a561101174375a1c460bda", size = 67998402, upload-time = "2026-11-03T13:34:46.019Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/4f/737258e8efa9264bcd7eb9615b0be6a58e4ad1d15c259982dbe53b071ce4/imageio_ffmpeg-0.8.1-py3-none-win32.whl", hash = "sha256:4f1213a47d9c3e819d5953671bc45d133a7d3a00c40a2934a9b1356933bee4e9", size = 19652697, upload-time = "2026-11-03T13:34:49.559Z" },
+    { url = "https://files.pythonhosted.org/packages/82/0c/a1d49f3dd2688bd750b4986f8e271ad11f8e729a896070ea25f587b44da8/imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl", hash = "sha256:f27ca4cb85e2d4946deedbce1a81245dfd942a2bcf94b53676fb3956aa95bf1b", size = 38893483, upload-time = "2026-11-03T13:34:52.921Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/39/ab95a2afd202772a69aab1fa5015f13b038f289c8617242cc5eebd0ec0e1/imageio_ffmpeg-0.8.1-py3-none-win_arm64.whl", hash = "sha256:0b7079e63dc34f97e43db5a5b7b9efb85edc1c6623313e0a4a17ebc7c2ce7a51", size = 37499681, upload-time = "2026-11-03T13:34:57.008Z" },
 ]
 
 [[package]]
