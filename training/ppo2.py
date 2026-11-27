@@ -56,6 +56,7 @@ DEATH_BASE = 4.0
 DAMAGE_PER_HP = 0.02
 USE_FAR_PENALTY = 0.02
 SEEN_REWARD = 0.004
+KILL_REWARD = float(__import__('os').environ.get('DF_KILL_REWARD', '0.6'))  # Stage E: 2.5
 # Footage review (2026-11-27): circling, wall/door hugging, open-ground fights.
 REVISIT_FREE = 4          # visits to a 64-unit cell before revisits cost
 REVISIT_PENALTY = 0.004
@@ -325,7 +326,7 @@ class Slot:
             self.ep["dead"] = 1
         dk = p["kills"] - self.kills
         if dk > 0:
-            r += 0.6 * dk
+            r += KILL_REWARD * dk
             self.ep["kills"] += dk
         self.kills = p["kills"]
         dd = p["damage_taken"] - self.damage

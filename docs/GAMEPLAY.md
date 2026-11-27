@@ -36,6 +36,24 @@ attempts. The per-category rates, failures included, are in
 The six shorter showcase clips used by the README (with GIF previews) are in
 [`assets/videos/`](assets/videos/).
 
+## Combat highlights
+
+The clips above are picked for the fastest exit, and the fastest runs avoid
+fights, so none of them shows a kill. The submitted agent does fight: on the
+validation split (272 episodes) it scores 66 kills, with at least one kill in 36
+episodes. These two clips are its highest-kill validation episodes (engine seed
+0), chosen *for* kills, uncut:
+
+| Clip | Map | Decisions | Outcome | Kills | Mapped |
+|---|---|---|---:|---:|---:|
+| [![combat](assets/videos/full/posters/combat_C9_ambush_10001.jpg)](assets/videos/full/combat_C9_ambush_10001.mp4) **ambush** | `C9_ambush_10001` | 825 | death | 4 | 17% |
+| [![combat](assets/videos/full/posters/combat_C13_ood_10004.jpg)](assets/videos/full/combat_C13_ood_10004.mp4) **OOD** | `C13_ood_10004` | 1050 | timeout | 3 | 29% |
+
+Combat is the agent's weakest skill: it mostly wins by reaching the exit rather
+than clearing rooms. A quick fine-tune with kills worth 2.5 instead of 0.6
+(Stage E, `DF_KILL_REWARD=2.5`) added only 9 kills on validation and lowered the
+overall score (−0.94), so it was not shipped.
+
 ## Re-record
 
 ```bash
