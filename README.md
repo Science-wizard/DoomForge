@@ -177,6 +177,7 @@ decision. DoomForge runs on CPU with an 8.4 MB checkpoint.
 | Document | Contents |
 |---|---|
 | [`docs/brief/DoomForge_Brief.pdf`](docs/brief/DoomForge_Brief.pdf) | **2-page project brief** |
+| [`script.md`](script.md) | 10-minute presentation script with slide cues and Q&A prep |
 | [`archi-explain.md`](archi-explain.md) | **start here**: the whole system in plain language, glossary, likely judge questions |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | ego map, network modules, parameter table, acting |
 | [`docs/TRAINING.md`](docs/TRAINING.md) | maps, teacher, demos, BC, PPO, rewards, exact stage settings, code map, commands |
