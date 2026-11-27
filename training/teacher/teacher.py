@@ -71,6 +71,7 @@ class Teacher:
     stats: TeacherStats = field(default_factory=TeacherStats)
     fallback_goal: tuple[float, float] | None = None
     fallback_t: int = -9999
+    reflex_pos: tuple[float, float] | None = None
 
     def __post_init__(self):
         if self.grid is None:
@@ -97,6 +98,7 @@ class Teacher:
         self.stats = TeacherStats()
         self.fallback_goal = None
         self.fallback_t = -9999
+        self.reflex_pos = None
 
     # ------------------------------------------------------------------ planning
     def _key_held(self, keys: np.ndarray, lock: int) -> bool:
@@ -149,7 +151,12 @@ class Teacher:
         if len(free_ix):
             cx, cy = self.grid.world_to_cell(*pos)
             d = (free_ix - cx) ** 2 + (free_iy - cy) ** 2
-            for k in np.argsort(d)[::-1][:8]:
+            # The flood fill ignores locks, so the farthest cells are often behind
+            # a locked door; spread candidates over distances instead of taking
+            # only the farthest 8 (which left the teacher idle for 1050 steps).
+            order = np.argsort(d)[::-1]
+            picks = list(order[:6]) + list(order[np.linspace(0, len(order) - 1, 14).astype(int)])
+            for k in picks:
                 gx, gy = self.grid.cell_to_world(int(free_ix[k]), int(free_iy[k]))
                 p = self.grid.path(pos, (gx, gy), keys)
                 if p is not None:
@@ -210,13 +217,19 @@ class Teacher:
             dc = d0[28:36]
             door_hit = (hc == 2) & (dc < 0.12)
             lock_hit = (hc == 3) & (dc < 0.12) & (float(keys_held.sum()) > 0)
-            if door_hit.any() or lock_hit.any():
-                if self.use_cool == 0:
+            if (door_hit.any() or lock_hit.any()) and self.use_cool == 0:
+                # Press once, then let navigation drive.  Pressing again at a spot
+                # where an earlier press made no progress is suppressed: the old
+                # reflex stood still through its cooldown and deadlocked on door
+                # jambs and wrong-key locks (35 presses, zero movement).
+                rp = self.reflex_pos
+                if rp is None or math.hypot(pos[0] - rp[0], pos[1] - rp[1]) > 48:
+                    self.reflex_pos = pos
                     a[7] = 1
                     self.use_cool = 30
                     self.stats.doors_used += 1
-                self.last_use = int(a[7])
-                return a
+                    self.last_use = 1
+                    return a
 
         if self.step - self.progress_t > 30:
             moved = math.hypot(pos[0] - self.progress_pos[0], pos[1] - self.progress_pos[1])

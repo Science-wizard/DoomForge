@@ -56,6 +56,12 @@ DEATH_BASE = 4.0
 DAMAGE_PER_HP = 0.02
 USE_FAR_PENALTY = 0.02
 SEEN_REWARD = 0.004
+# Footage review (2026-11-27): circling, wall/door hugging, open-ground fights.
+REVISIT_FREE = 4          # visits to a 64-unit cell before revisits cost
+REVISIT_PENALTY = 0.004
+WALL_HUG_DIST = 0.024     # normalised ray distance (~24 units)
+WALL_HUG_PENALTY = 0.006
+EXPOSED_PER_HP = 0.012    # extra damage cost per HP per additional visible enemy
 SUITE_TRAIN = "training/data/suite/train/manifest.jsonl"
 ENEMY_TYPES = (1, 2, 3)
 _LOCK_TO_KEY = {1: 2, 2: 0, 3: 1}
@@ -229,6 +235,8 @@ class Slot:
         self.doors = dict(self.env.mapinfo.door_sectors)
         self.opened: set[int] = set()
         self.cells: set[tuple[int, int]] = {(int(p["x"] // 64), int(p["y"] // 64))}
+        self.visits: dict[tuple[int, int], int] = {}
+        self.last_cell = (int(p["x"] // 64), int(p["y"] // 64))
         self.prev, self.turn_held, self.use_last = None, 0, 0
         self.steps = 0
         self.kills, self.damage = p["kills"], p["damage_taken"]
@@ -323,6 +331,18 @@ class Slot:
         dd = p["damage_taken"] - self.damage
         if dd > 0:
             r -= DAMAGE_PER_HP * dd
+            # Taking hits while several enemies see us = fighting in the open.
+            # Pulling them one at a time round a corner is cheaper.
+            ent = self.obs["visible_entities"]
+            n_vis = int((np.asarray(ent["mask"]).astype(bool)
+                         & np.isin(np.asarray(ent["entity_type"]), ENEMY_TYPES)).sum())
+            if n_vis > 1:
+                r -= EXPOSED_PER_HP * dd * (n_vis - 1)
+        # Wall hugging: scraping walls (not doors) slows movement and reads badly.
+        hit_now = np.asarray(obs["rays"]["hit_type"])
+        dist_now = np.asarray(obs["rays"]["distance"])
+        if np.any((dist_now < WALL_HUG_DIST) & (hit_now != 2) & (hit_now != 3) & (hit_now != 0)):
+            r -= WALL_HUG_PENALTY
         self.damage = p["damage_taken"]
         nk = int((np.asarray(p["keys"]) > 0.5).sum())
         if nk > self.keys:
@@ -348,6 +368,13 @@ class Slot:
         if cell not in self.cells:
             self.cells.add(cell)
             r += 0.01
+        # Circling: re-entering a well-trodden cell costs a little.
+        if cell != self.last_cell:
+            v = self.visits.get(cell, 0) + 1
+            self.visits[cell] = v
+            if v > REVISIT_FREE:
+                r -= REVISIT_PENALTY * min(v - REVISIT_FREE, 5)
+        self.last_cell = cell
         # geodesic progress towards the current objective
         kind, d, xy = self.obj.query(p["x"], p["y"], p["keys"])
         if kind == self.obj_kind and kind != "none" and math.isfinite(d) and math.isfinite(self.obj_d):

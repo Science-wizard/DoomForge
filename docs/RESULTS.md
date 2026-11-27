@@ -138,6 +138,32 @@ Full-length footage of every category, including the failures below, is in
   share a layout family, so single categories swing between checkpoints. The
   headline CIs account for this.
 
+### Stage D (2026-11-27): footage-driven shaping, first gauntlet exits
+
+From replay review: PPO fine-tune (30 updates, ~140k steps) from the shipped
+net with three new training-time costs: re-entering a well-trodden 64-unit cell
+(circling), any non-door ray under ~24 units (wall hugging), and extra damage
+cost per additional visible enemy (fighting in the open instead of isolating
+one enemy at a time).
+
+| | Previous | **Stage D (u30 EMA)** |
+|---|---:|---:|
+| Val, 2 seeds (272 ep) | +8.28 | **+9.05** (paired +0.77, CI −0.09…+1.60) |
+| Test (140 ep) | +8.48 | **+8.61** (paired +0.13, CI −0.76…+0.99) |
+| C11 gauntlet exits, val / test | 0% / 0% | **10% / 10%** (C11 proxy +4.0 / +3.6) |
+| C10 scarce-ammo exits, val | 0% | 10% |
+| C2 arena exits, val / test | 50% / 50% | 85% / 60% |
+| C5 key→lock exits, val / test | 100% / 80% | 70% / 70% |
+
+Later snapshots (u40, u50) and a 50/50 soup with the previous net scored lower.
+The headline CIs include zero; the gauntlet gain is consistent across splits.
+
+Teacher audit: with full map access the scripted teacher itself only exited
+C11 1/10 and C9 0/10 on val (4/10 and 7/10 in god mode). Two deadlocks were
+fixed: the door reflex idled through its USE cooldown (35 presses, no
+movement), and the explore fallback picked only cells behind locked doors.
+The next demo collection should use the fixed teacher.
+
 ## Commands
 
 ```bash
