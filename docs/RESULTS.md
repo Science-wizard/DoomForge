@@ -110,7 +110,7 @@ short of the second lock. On test, C6 is 10/10.
 
 | Change | Measured effect |
 |---|---|
-| Corrected dead reckoning (turn-run, per-tic friction, wall clip) | 500-decision drift 431 → 31 units; heading 25° → 0.02° |
+| Corrected dead reckoning (turn-run, per-tic friction, wall clip) | drift after 500 decisions on the agent's own episodes 225 → 99 units (random-action test drive: 431 → 31); heading 25° → 0.02° |
 | Heading-up two-scale ego map | BC alone solves C3 (80%) and C6 (100%) with no routing |
 | Seeded sampling instead of argmax (same weights) | +6.38 → +7.80 (fast val); no freeze-at-tie episodes |
 | One PPO network instead of routing to a combat expert | routing cut C2 from 80% to 20% |

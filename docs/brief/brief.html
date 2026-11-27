@@ -1,383 +1,298 @@
 <!doctype html>
 <!--
-  DoomForge 2-page project brief. Source of docs/brief/DoomForge_Brief.pdf.
-  Rebuild (from the repo root):
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu \
-      --no-pdf-header-footer --print-to-pdf=docs/brief/DoomForge_Brief.pdf "file://$PWD/docs/brief/brief.html"
-  Figures in assets/ are rendered from the shipped agent on validation map C7_exploration_10000.
+  DoomForge 2-page project brief: source of docs/brief/DoomForge_Brief.pdf.
+  Figures:  PYTHONPATH=. uv run python docs/brief/make_figures.py
+  PDF:      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu \
+              --no-pdf-header-footer --print-to-pdf=docs/brief/DoomForge_Brief.pdf "file://$PWD/docs/brief/brief.html"
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>DoomForge: Project Brief</title>
 <style>
-  :root {
-    --ink: #0f172a; --body: #1e293b; --muted: #64748b; --faint: #94a3b8;
-    --rule: #e2e8f0; --panel: #f8fafc; --accent: #b91c1c; --accent-soft: #fef2f2;
-    --blue: #2563eb; --dark: #0b1220;
-  }
+  :root { --ink:#0f172a; --body:#1e293b; --muted:#64748b; --faint:#94a3b8; --rule:#e2e8f0; --panel:#f8fafc;
+          --red:#b91c1c; --red-soft:#fef2f2; --blue:#2563eb; --dark:#0b1220; }
   @page { size: A4; margin: 0; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #fff; }
-  body { font-family: -apple-system, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
-         color: var(--body); font-size: 8.4pt; line-height: 1.38; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .page { width: 210mm; height: 297mm; padding: 0 13mm 10mm; position: relative; overflow: hidden; }
+  html, body { margin:0; padding:0; background:#fff; }
+  body { font-family: -apple-system, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif; color:var(--body);
+         font-size:8.2pt; line-height:1.36; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .page { width:210mm; height:297mm; padding:0 12mm 9mm; position:relative; overflow:hidden; }
   .page + .page { break-before: page; }
 
-  /* header */
-  .masthead { margin: 0 -13mm 5mm; padding: 9mm 13mm 6.5mm; background: var(--dark); color: #e2e8f0; position: relative; }
-  .masthead::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1.2mm; background: var(--accent); }
-  .eyebrow { font-size: 7.2pt; letter-spacing: 1.4pt; text-transform: uppercase; color: #fca5a5; font-weight: 600; }
-  h1 { font-size: 30pt; line-height: 1; margin: 2mm 0 2.2mm; color: #fff; letter-spacing: -0.8pt; font-weight: 800; }
-  .tagline { font-size: 10.5pt; color: #cbd5e1; max-width: 165mm; line-height: 1.4; margin: 0; }
-  .tagline b { color: #fff; font-weight: 600; }
-  .mini-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1.2pt solid var(--accent);
-               padding: 8mm 0 2mm; margin-bottom: 4mm; }
-  .mini-head .t { font-weight: 800; font-size: 13pt; color: var(--ink); letter-spacing: -0.3pt; }
-  .mini-head .eyebrow { color: var(--accent); }
+  .masthead { margin:0 -12mm 4.5mm; padding:8.5mm 12mm 6mm; background:var(--dark); color:#cbd5e1; position:relative; }
+  .masthead::after { content:""; position:absolute; left:0; right:0; bottom:0; height:1.2mm; background:var(--red); }
+  .eyebrow { font-size:7pt; letter-spacing:1.4pt; text-transform:uppercase; color:#fca5a5; font-weight:600; }
+  h1 { font-size:32pt; line-height:1; margin:1.8mm 0 2mm; color:#fff; letter-spacing:-1pt; font-weight:800; }
+  .tagline { font-size:10.8pt; color:#cbd5e1; line-height:1.4; margin:0; max-width:170mm; }
+  .tagline b { color:#fff; }
+  .mini { display:flex; justify-content:space-between; align-items:baseline; border-bottom:1.2pt solid var(--red);
+          padding:7.5mm 0 2mm; margin-bottom:4mm; }
+  .mini .t { font-weight:800; font-size:13pt; color:var(--ink); letter-spacing:-0.3pt; }
+  .mini .eyebrow { color:var(--red); }
 
-  /* text */
-  h2 { font-size: 10.6pt; color: var(--ink); margin: 0 0 1.8mm; letter-spacing: -0.1pt; display: flex; align-items: center; gap: 2mm; }
-  h2 .n { display: inline-flex; width: 4.6mm; height: 4.6mm; border-radius: 50%; background: var(--accent); color: #fff;
-          font-size: 7pt; align-items: center; justify-content: center; font-weight: 700; flex: none; }
-  h3 { font-size: 8.6pt; color: var(--ink); margin: 0 0 1mm; }
-  p { margin: 0 0 1.6mm; }
-  ul { margin: 0 0 1.6mm; padding-left: 3.8mm; }
-  li { margin: 0 0 0.9mm; }
-  b, strong { color: var(--ink); }
-  code { font-family: "SF Mono", Menlo, monospace; font-size: 7.3pt; background: #f1f5f9; padding: 0 0.8mm; border-radius: 0.8mm; color: var(--ink); }
-  .muted { color: var(--muted); }
-  .small { font-size: 7.3pt; }
-  .accent { color: var(--accent); font-weight: 700; }
-  section { margin-bottom: 4.6mm; }
+  h2 { font-size:11pt; color:var(--ink); margin:0 0 1.6mm; letter-spacing:-0.2pt; }
+  h2 .k { color:var(--red); font-size:7pt; letter-spacing:1.2pt; text-transform:uppercase; display:block; font-weight:700; margin-bottom:0.3mm; }
+  p { margin:0 0 1.4mm; }
+  b { color:var(--ink); }
+  .cap { font-size:7.2pt; color:var(--muted); line-height:1.35; margin-top:1mm; }
+  .cap b { color:var(--ink); }
+  code { font-family:"SF Mono", Menlo, monospace; font-size:7.2pt; background:#f1f5f9; padding:0 0.8mm; border-radius:0.8mm; color:var(--ink); }
+  section { margin-bottom:3.8mm; }
+  .row { display:grid; gap:5mm; }
+  img.fig { width:100%; display:block; }
 
-  /* layout */
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
-  .cols-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4mm; }
-  .card { background: var(--panel); border: 0.6pt solid var(--rule); border-radius: 2mm; padding: 2.8mm 3.2mm; }
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:3mm; margin-bottom:4.5mm; }
+  .kpi { border:0.6pt solid var(--rule); border-top:1.6pt solid var(--red); border-radius:2mm; padding:2.2mm 3mm 2.4mm; }
+  .kpi .v { font-size:18pt; font-weight:800; color:var(--ink); letter-spacing:-0.6pt; line-height:1.05; }
+  .kpi .v small { font-size:9pt; color:var(--red); font-weight:700; letter-spacing:0; margin-left:1mm; }
+  .kpi .l { font-size:6.9pt; color:var(--muted); margin-top:0.8mm; line-height:1.3; }
 
-  /* KPIs */
-  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin-bottom: 5mm; }
-  .kpi { border: 0.6pt solid var(--rule); border-radius: 2mm; padding: 2.4mm 3mm; border-top: 1.4pt solid var(--accent); }
-  .kpi .v { font-size: 17pt; font-weight: 800; color: var(--ink); letter-spacing: -0.5pt; line-height: 1.05; }
-  .kpi .l { font-size: 6.8pt; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6pt; margin-top: 0.8mm; }
+  .hero { display:grid; grid-template-columns:1.25fr 1fr; gap:6mm; align-items:start; }
+  .hero .panel { background:var(--panel); border:0.6pt solid var(--rule); border-radius:2.5mm; padding:3mm; }
+  .hero img.map { height:49mm; width:100%; object-fit:contain; }
+  .hero img.agent { height:49mm; width:100%; object-fit:contain; image-rendering:pixelated; }
+  .badge { display:inline-block; font-size:6.6pt; font-weight:700; letter-spacing:0.8pt; text-transform:uppercase;
+           background:var(--red); color:#fff; border-radius:1mm; padding:0.4mm 1.6mm; margin-bottom:1.6mm; }
+  .badge.blue { background:var(--blue); }
+  .legend { display:flex; flex-wrap:wrap; gap:0.8mm 3mm; font-size:6.6pt; color:var(--muted); margin-top:1.2mm; }
+  .sw { display:inline-block; width:2.3mm; height:2.3mm; border-radius:0.5mm; vertical-align:-0.3mm; margin-right:0.8mm; }
 
-  /* architecture diagram */
-  .arch { display: grid; grid-template-columns: 44mm 6mm 60mm 6mm 1fr; align-items: stretch; gap: 0; }
-  .lane { display: flex; flex-direction: column; gap: 1.4mm; justify-content: center; }
-  .box { border: 0.7pt solid #cbd5e1; border-radius: 1.6mm; padding: 1.3mm 2mm; background: #fff; font-size: 7.2pt; line-height: 1.25; }
-  .box b { font-size: 7.5pt; }
-  .box.in { background: #f1f5f9; }
-  .box.mem { background: #eff6ff; border-color: #93c5fd; }
-  .box.core { background: var(--dark); color: #e2e8f0; border-color: var(--dark); }
-  .box.core b { color: #fff; }
-  .box.out { background: var(--accent-soft); border-color: #fca5a5; }
-  .arrow { display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 11pt; }
-  .enc { display: grid; grid-template-columns: 1fr auto; gap: 0 2mm; }
-  .enc span:nth-child(even) { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .arch { display:grid; grid-template-columns:1.2fr 5mm 1.25fr 5mm 0.95fr; align-items:center; }
+  .lane { display:flex; flex-direction:column; gap:1.3mm; }
+  .box { border:0.7pt solid #cbd5e1; border-radius:1.6mm; padding:1.4mm 2.2mm; background:#fff; font-size:7.2pt; line-height:1.28; }
+  .box.in { background:#f1f5f9; }
+  .box.mem { background:#eff6ff; border-color:#93c5fd; }
+  .box.core { background:var(--dark); color:#cbd5e1; border-color:var(--dark); }
+  .box.core b { color:#fff; }
+  .box.out { background:var(--red-soft); border-color:#fca5a5; }
+  .arrow { text-align:center; color:var(--red); font-size:13pt; font-weight:700; }
+  .enc { display:grid; grid-template-columns:1fr auto; gap:0.2mm 2mm; }
+  .enc span:nth-child(even) { color:var(--muted); font-variant-numeric:tabular-nums; }
 
-  /* figures */
-  figure { margin: 0; }
-  .fig2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; align-items: start; }
-  .fig2 img { width: 100%; height: 47mm; object-fit: contain; display: block; }
-  .agentmap { image-rendering: pixelated; border-radius: 1mm; }
-  figcaption { font-size: 7pt; color: var(--muted); margin-top: 1.2mm; line-height: 1.35; }
-  .legend { display: flex; flex-wrap: wrap; gap: 1mm 3mm; font-size: 6.6pt; color: var(--muted); margin-top: 1mm; }
-  .sw { display: inline-block; width: 2.4mm; height: 2.4mm; border-radius: 0.5mm; vertical-align: -0.3mm; margin-right: 0.8mm; }
+  .chart { border:0.6pt solid var(--rule); border-radius:2.5mm; padding:2.6mm 3mm 2.2mm; }
+  .chart h3 { font-size:8.6pt; color:var(--ink); margin:0 0 0.4mm; }
+  .chart .sub { font-size:7pt; color:var(--muted); margin-bottom:1mm; }
+  .chart img.fig { height:41mm; object-fit:contain; }
 
-  /* pipeline */
-  .pipe { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2mm; margin-bottom: 3mm; }
-  .step { position: relative; background: var(--panel); border: 0.6pt solid var(--rule); border-radius: 2mm; padding: 2.4mm 2.6mm 2.2mm; }
-  .step .k { font-size: 6.4pt; font-weight: 700; color: var(--accent); letter-spacing: 0.8pt; text-transform: uppercase; }
-  .step .t { font-weight: 700; color: var(--ink); font-size: 8.4pt; margin: 0.4mm 0 0.8mm; }
-  .step .d { font-size: 6.9pt; color: var(--muted); line-height: 1.32; }
-  .step:not(:last-child)::after { content: "›"; position: absolute; right: -2.1mm; top: 40%; color: var(--accent); font-size: 12pt; font-weight: 700; }
+  .skills { display:grid; grid-template-columns:1.9fr 1fr; gap:3mm; }
+  .skills .stack { display:grid; grid-template-rows:repeat(3, 1fr); gap:3mm; }
+  .skill { border:0.6pt solid var(--rule); border-radius:2.5mm; padding:2.4mm 3mm 2.2mm; background:var(--panel); }
+  .skill.wide { display:grid; grid-template-columns:1fr 34mm; gap:3mm; align-items:center; }
+  .skill img { width:100%; display:block; object-fit:contain; }
+  .skill.wide img { height:17mm; }
+  .skill.tall img { height:60mm; margin-bottom:1.6mm; }
+  .skill .t { font-weight:700; color:var(--ink); font-size:8pt; }
+  .skill .d { font-size:6.8pt; color:var(--muted); margin-top:0.4mm; }
 
-  /* tables */
-  table { width: 100%; border-collapse: collapse; font-size: 7.4pt; }
-  th { text-align: left; font-size: 6.6pt; text-transform: uppercase; letter-spacing: 0.5pt; color: var(--muted); font-weight: 600;
-       border-bottom: 0.8pt solid var(--ink); padding: 0.8mm 1mm; }
-  td { padding: 0.75mm 1mm; border-bottom: 0.5pt solid var(--rule); vertical-align: top; }
-  td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
-  td.pos { color: #15803d; font-weight: 600; }
-  td.neg { color: var(--accent); font-weight: 600; }
-  .big { font-size: 22pt; font-weight: 800; color: var(--ink); letter-spacing: -0.8pt; line-height: 1; }
-  .delta { display: inline-block; background: #dcfce7; color: #166534; font-weight: 700; font-size: 7.6pt; border-radius: 1mm; padding: 0.4mm 1.4mm; }
-  .chart-key { display: flex; gap: 4mm; font-size: 6.8pt; color: var(--muted); margin: 0.6mm 0 0.4mm; }
+  .pipe { display:grid; grid-template-columns:repeat(5,1fr); gap:2.4mm; }
+  .step { position:relative; border-radius:2mm; padding:2.2mm 2.4mm; background:var(--panel); border:0.6pt solid var(--rule); }
+  .step .n { font-size:15pt; font-weight:800; color:var(--red); line-height:1; }
+  .step .t { font-weight:700; color:var(--ink); font-size:8pt; margin:0.6mm 0 0.6mm; }
+  .step .d { font-size:6.8pt; color:var(--muted); line-height:1.3; }
+  .step:not(:last-child)::after { content:"›"; position:absolute; right:-2.3mm; top:38%; color:var(--red); font-size:13pt; font-weight:800; }
 
-  .footer { position: absolute; left: 13mm; right: 13mm; bottom: 6mm; display: flex; justify-content: space-between;
-            font-size: 6.8pt; color: var(--faint); border-top: 0.5pt solid var(--rule); padding-top: 1.6mm; }
+  .score { background:var(--dark); color:#cbd5e1; border-radius:2.5mm; padding:3.4mm 4mm; }
+  .score .big { font-size:30pt; font-weight:800; color:#fff; letter-spacing:-1pt; line-height:1; }
+  .score .vs { color:#94a3b8; font-size:9pt; margin-left:2mm; }
+  .score .pill { display:inline-block; background:#16a34a; color:#fff; font-weight:700; font-size:7.4pt; border-radius:1mm; padding:0.5mm 1.8mm; margin-top:1.6mm; }
+  .score p { font-size:7.2pt; color:#94a3b8; margin:1.8mm 0 0; }
+
+  .lat { margin-top:3mm; }
+  .lat .bar { height:4.4mm; background:#f1f5f9; border-radius:1mm; position:relative; overflow:hidden; border:0.6pt solid var(--rule); }
+  .lat .fill { position:absolute; left:0; top:0; bottom:0; width:4%; background:var(--red); }
+  .lat .lbl { display:flex; justify-content:space-between; font-size:6.8pt; color:var(--muted); margin-top:0.8mm; }
+
+  .chips { display:flex; flex-wrap:wrap; gap:1.6mm; }
+  .chip { font-size:7pt; border:0.6pt solid #bbf7d0; background:#f0fdf4; color:#166534; border-radius:5mm; padding:0.8mm 2.4mm; font-weight:600; }
+
+  .footer { position:absolute; left:12mm; right:12mm; bottom:5.5mm; display:flex; justify-content:space-between;
+            font-size:6.7pt; color:var(--faint); border-top:0.5pt solid var(--rule); padding-top:1.5mm; }
 </style>
 </head>
 <body>
 
-<!-- ===================================================================== PAGE 1 -->
+<!-- ============================================================ PAGE 1 -->
 <div class="page">
   <header class="masthead">
     <div class="eyebrow">Yugaantar DevForge 2026 · Track 1 · Can it play DOOM?</div>
     <h1>DoomForge</h1>
-    <p class="tagline">A single <b>2-million-parameter recurrent network</b> that maps unseen levels as it moves,
-      fetches keys, opens locks and fights, deciding in <b>1.6 ms on one CPU thread</b>. Behaviour cloning
-      from a privileged teacher, then parallel PPO with an asymmetric critic.</p>
+    <p class="tagline">One <b>2-million-parameter recurrent network</b> that explores levels it has never seen, builds its own
+      map as it moves, fetches keys, opens locks and fights its way to the exit, deciding in <b>1.6 ms on a single CPU thread</b>.</p>
   </header>
 
   <div class="kpis">
-    <div class="kpi"><div class="v">+8.48</div><div class="l">Test proxy · reference +6.11</div></div>
-    <div class="kpi"><div class="v">7 / 14</div><div class="l">categories at ≥ 80 % exits</div></div>
-    <div class="kpi"><div class="v">1.6 ms</div><div class="l">per decision · budget 40 ms</div></div>
-    <div class="kpi"><div class="v">PASS</div><div class="l">official validator</div></div>
-  </div>
-
-  <div class="cols">
-    <section>
-      <h2><span class="n">1</span>The problem</h2>
-      <ul>
-        <li><b>No position, no exit marker.</b> Observations are ego-centric rays, entities, vitals and pixels.
-          The exit is not a ray type or an entity, so the agent needs its own memory of where it has been.</li>
-        <li><b>Colour is only in pixels.</b> Every key is just <code>key</code>, every lock <code>locked door</code>.</li>
-        <li><b>Fiddly doors, sparse reward.</b> USE fires on a fresh press and reverses a moving door; the exit
-          reward arrives hundreds of decisions after the actions that earned it.</li>
-        <li><b>One CPU thread, 40 ms per decision</b>, and the actions must come from trained parameters.</li>
-      </ul>
-    </section>
-    <section>
-      <h2><span class="n">2</span>Our answer</h2>
-      <ul>
-        <li><b>Give the network a memory it can read.</b> Exact DOOM dead reckoning feeds a heading-up ego map
-          of what the agent has seen and where it has walked. That is perception, not planning.</li>
-        <li><b>Learn from a teacher, then from the game.</b> A training-only expert with full map access
-          demonstrates 436 k steps; PPO then optimises the task from the agent's own view.</li>
-        <li><b>Measure honestly.</b> A 14-category suite, seed-disjoint splits, paired bootstrap promotion,
-          one logged look at the test split.</li>
-      </ul>
-    </section>
+    <div class="kpi"><div class="v">+8.48<small>+39%</small></div><div class="l">held-out test score vs +6.11 for our reference design (paired 95% CI +1.47 … +3.24)</div></div>
+    <div class="kpi"><div class="v">5 skills</div><div class="l">solved on 100% of unseen test maps: sanity, corridor door, room door, two-key chain, backtrack</div></div>
+    <div class="kpi"><div class="v">4.2×</div><div class="l">more of the map explored on ambush levels than our reference; 2.8–3.2× on the other hard tiers</div></div>
+    <div class="kpi"><div class="v">1.6 ms</div><div class="l">per decision on one CPU thread, 25× under the 40 ms budget</div></div>
   </div>
 
   <section>
-    <h2><span class="n">3</span>Architecture: one network, every decision</h2>
-    <div class="arch">
-      <div class="lane">
-        <div class="box in"><b>Rays</b> · 64 distances + hit types</div>
-        <div class="box in"><b>Entities</b> · up to 32, type + pose</div>
-        <div class="box in"><b>Vitals</b> · health, ammo, keys, velocity</div>
-        <div class="box in"><b>RGB</b> · 120×160, pooled to 30×40</div>
-        <div class="box mem"><b>EgoMap</b> · dead reckoning → 160×160 grid, 8 channels → two heading-up crops 16×32×32</div>
+    <div class="hero">
+      <div class="panel">
+        <span class="badge">It plays</span>
+        <img class="fig map" src="assets/hero.png" alt="Agent path through an unseen multi-room map">
+        <div class="cap"><b>An unseen 11-room level, solved.</b> The agent's real path (blue) from spawn (●) through six doors
+          (orange) to the exit (★) in 915 decisions, with no map and no position given.</div>
       </div>
-      <div class="arrow">→</div>
-      <div class="lane">
-        <div class="box">
-          <div class="enc">
-            <span>circular Conv1d (rays)</span><span>128</span>
-            <span>self-attention (entities)</span><span>128</span>
-            <span>MLP (vitals)</span><span>64</span>
-            <span>CNN (colour: exits, locks)</span><span>128</span>
-            <span>CNN (ego map, stride-1 first)</span><span>192</span>
-            <span>MLP (prev action, pose)</span><span>32 + 32</span>
-          </div>
-        </div>
-        <div class="box mem"><b>Goal head</b> predicts the current objective (exit / key / frontier) as an ego-relative vector, fused back in</div>
-      </div>
-      <div class="arrow">→</div>
-      <div class="lane">
-        <div class="box core"><b>GRU 384</b><br>memory across decisions: door timing, keys held, recent threats</div>
-        <div class="box out"><b>Six factorised heads</b><br>move 3 · strafe 3 · turn 3 · attack · use · next weapon (216 legal combinations)</div>
-        <div class="box out"><b>Seeded sampling</b> → 9 buttons<br><span class="muted">re-seeded per map: reproducible</span></div>
-      </div>
-    </div>
-    <p class="small muted" style="margin-top:2mm">2,000,735 acting parameters. Training-only extras (never used to act): value head,
-      35 auxiliary outputs (exit visible / bearing / distance, key colours, damage), and a privileged critic.</p>
-  </section>
-
-  <section>
-    <h2><span class="n">4</span>Memory that matches reality</h2>
-    <div class="fig2">
-      <figure>
-        <img src="assets/c7_trajectory.png" alt="True map with the agent's path">
-        <figcaption><b>Ground truth.</b> An unseen multi-room validation map: walls, doors (orange), the agent's path (blue)
-          from spawn (●) to the exit (★) through six doors in 915 decisions.</figcaption>
-      </figure>
-      <figure>
-        <img class="agentmap" src="assets/c7_agent_map.png" alt="The agent's self-built map">
+      <div class="panel">
+        <span class="badge blue">It remembers</span>
+        <img class="fig agent" src="assets/agent_map.png" alt="The map the agent built itself">
         <div class="legend">
           <span><i class="sw" style="background:#e2e8f0"></i>seen floor</span>
-          <span><i class="sw" style="background:#1e293b"></i>wall</span>
+          <span><i class="sw" style="background:#0f172a"></i>walls</span>
           <span><i class="sw" style="background:#2563eb"></i>own trail</span>
           <span><i class="sw" style="background:#22c55e"></i>items</span>
           <span><i class="sw" style="background:#facc15"></i>frontier</span>
         </div>
-        <figcaption><b>What the agent built itself</b>, from its own observations and executed actions only: the
-          rooms it explored, its trail and the frontier. Turn-acceleration, per-tic friction and wall-pin modelling
-          keep drift at ~30 units per 500 decisions (431 before the corrections).</figcaption>
-      </figure>
+        <div class="cap"><b>The map it built in the same episode</b>, from its own observations and movement alone. Rooms,
+          walls, its trail and the unexplored frontier, read by the network every decision.</div>
+      </div>
     </div>
   </section>
 
-  <div class="footer"><span>DoomForge · Track 1 project brief</span><span>github.com/Science-wizard/DoomForge · page 1 / 2</span></div>
+  <section>
+    <h2><span class="k">Architecture</span>Memory in, one network, actions out</h2>
+    <div class="arch">
+      <div class="lane">
+        <div class="box in"><b>64 rays</b> · distance + wall / door / lock / enemy / item</div>
+        <div class="box in"><b>≤ 32 entities</b> · type, bearing, distance, velocity</div>
+        <div class="box in"><b>Vitals + RGB</b> · health, ammo, keys · colour image</div>
+        <div class="box mem"><b>EgoMap</b> · own dead reckoning → 8-channel map → heading-up crops at two scales</div>
+      </div>
+      <div class="arrow">›</div>
+      <div class="lane">
+        <div class="box"><div class="enc">
+          <span>circular conv over rays</span><span>128</span>
+          <span>self-attention over entities</span><span>128</span>
+          <span>colour CNN: exit signs, lock colours</span><span>128</span>
+          <span>map CNN: frontier, doors, keys, trail</span><span>192</span>
+          <span>vitals · previous action · pose</span><span>128</span></div></div>
+        <div class="box mem"><b>Learned goal head</b> predicts where to go next (exit / key / frontier), fed back into the policy</div>
+      </div>
+      <div class="arrow">›</div>
+      <div class="lane">
+        <div class="box core"><b>GRU 384</b><br>memory across decisions</div>
+        <div class="box out"><b>6 factorised action heads</b><br>move · strafe · turn · attack · use · weapon</div>
+        <div class="box out"><b>Seeded sampling → 9 buttons</b><br>reproducible on every map</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="row" style="grid-template-columns: 1fr 1fr;">
+      <div class="chart">
+        <h3>Odometry that holds up in real play</h3>
+        <div class="sub">Position error of the agent's own map on 10 validation episodes</div>
+        <img class="fig" src="assets/odometry.svg" alt="Odometry error">
+        <div class="cap">Modelling DOOM's turn acceleration, per-tic friction and wall contact gives <b>2.3× less drift</b>
+          than naive integration (99 vs 225 units after 500 decisions).</div>
+      </div>
+      <div class="chart">
+        <h3>Skills grow through three PPO stages</h3>
+        <div class="sub">Exit rate on training maps, sampled from the live policy</div>
+        <img class="fig" src="assets/learning.svg" alt="Learning curves">
+        <div class="cap">Room doors, backtracking and duels climb to <b>90–100%</b>, and multi-room exploration emerges in
+          stage C, after the agent is rewarded for revealing new floor.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer"><span>DoomForge · Track 1 project brief</span><span>github.com/Science-wizard/DoomForge · 1 / 2</span></div>
 </div>
 
-<!-- ===================================================================== PAGE 2 -->
+<!-- ============================================================ PAGE 2 -->
 <div class="page">
-  <div class="mini-head"><span class="t">DoomForge</span><span class="eyebrow">How it was trained · how it performs</span></div>
+  <div class="mini"><span class="t">DoomForge</span><span class="eyebrow">Skills · training · results</span></div>
 
   <section>
-    <h2><span class="n">5</span>Training pipeline</h2>
+    <h2><span class="k">Replays on unseen maps</span>Skills it solves end to end</h2>
+    <div class="skills">
+      <div class="stack">
+        <div class="skill wide"><img src="assets/skill_twokey.png" alt="">
+          <div><div class="t">Two keys, two locks</div><div class="d">Picks up both keys (◆) and opens both coloured locks (red) in order. 215 decisions.</div></div></div>
+        <div class="skill wide"><img src="assets/skill_roomdoor.png" alt="">
+          <div><div class="t">Door on a room wall</div><div class="d">Finds the door (orange) from a random start pose, opens it and exits. 201 decisions.</div></div></div>
+        <div class="skill wide"><img src="assets/skill_backtrack.png" alt="">
+          <div><div class="t">Key behind the spawn</div><div class="d">Turns back for the key, then returns to unlock the way out. 144 decisions.</div></div></div>
+      </div>
+      <div class="skill tall"><img src="assets/skill_arena.png" alt="">
+        <div class="t">Arena combat</div><div class="d">Three kills (✕) on the way across a monster arena to the exit (★). 125 decisions.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="k">Training pipeline</span>From an expert's demonstrations to a self-taught policy</h2>
     <div class="pipe">
-      <div class="step"><div class="k">Data</div><div class="t">Maps</div>
-        <div class="d">Node-less WAD generator (arenas, multi-room, key→lock, gauntlets), door/key drills, Freedoom. 14 categories, 1,966 train maps, hash-checked splits.</div></div>
-      <div class="step"><div class="k">Data</div><div class="t">Teacher</div>
-        <div class="d">Training-only expert: nav grid, A*, door state machine, circle-strafe combat. 436 k demo steps + exit / colour / goal labels.</div></div>
-      <div class="step"><div class="k">Learn</div><div class="t">Behaviour cloning</div>
-        <div class="d">Ego maps replayed offline through the shipped EgoMap (no train/serve skew). Six-head CE + auxiliary + goal losses.</div></div>
-      <div class="step"><div class="k">Learn</div><div class="t">Parallel PPO × 3</div>
-        <div class="d">72 envs, bootstrapped GAE, privileged critic, imitation + KL regularisers, curriculum. ~1.6 M steps.</div></div>
-      <div class="step"><div class="k">Select</div><div class="t">Promotion gate</div>
-        <div class="d">Every snapshot scored on validation; paired bootstrap CI &gt; 0, no category regression; one logged test look.</div></div>
+      <div class="step"><div class="n">1</div><div class="t">Procedural levels</div>
+        <div class="d">Own WAD generator: arenas, multi-room, key→lock, gauntlets + door/key drills + Freedoom. 1,966 training maps.</div></div>
+      <div class="step"><div class="n">2</div><div class="t">Expert teacher</div>
+        <div class="d">Training-only expert with full map access: 436 k demo steps with exit, colour and goal labels.</div></div>
+      <div class="step"><div class="n">3</div><div class="t">Behaviour cloning</div>
+        <div class="d">Demos replayed through the shipped map, so training sees exactly what the agent will see.</div></div>
+      <div class="step"><div class="n">4</div><div class="t">Parallel PPO</div>
+        <div class="d">72 games at once, asymmetric critic, rewards for exits, keys, doors and newly seen floor. ~1.6 M steps.</div></div>
+      <div class="step"><div class="n">5</div><div class="t">Statistical gate</div>
+        <div class="d">Every snapshot scored on validation; paired bootstrap promotion; one logged test look.</div></div>
     </div>
+  </section>
 
-    <div class="cols">
+  <section>
+    <h2><span class="k">Results · held-out test split</span>A large, statistically solid gain</h2>
+    <div class="row" style="grid-template-columns: 1fr 1.05fr 1.05fr; align-items:start">
       <div>
-        <h3>PPO reward (training only)</h3>
-        <table>
-          <tr><th>Term</th><th class="r">Value</th></tr>
-          <tr><td>Exit</td><td class="r">+10 + 2 × time left</td></tr>
-          <tr><td>Key / locked door / door</td><td class="r">+5 / +3 / +0.5</td></tr>
-          <tr><td>New sector / new cell</td><td class="r">+0.3 / +0.01</td></tr>
-          <tr><td>Newly seen floor in the agent's own map</td><td class="r">+0.004 / cell</td></tr>
-          <tr><td>Geodesic progress to the current objective</td><td class="r">+0.003 / unit</td></tr>
-          <tr><td>Kill</td><td class="r">+0.6</td></tr>
-          <tr><td>Damage · death</td><td class="r">−0.02 / HP · −(6t + 4)</td></tr>
-          <tr><td>Standing still (&lt; 48 units / 16 decisions)</td><td class="r">−0.02 / step</td></tr>
-        </table>
+        <div class="score">
+          <div class="muted" style="font-size:7pt; color:#94a3b8">Tier-weighted score, 140 unseen test episodes</div>
+          <div style="margin-top:1.2mm"><span class="big">+8.48</span><span class="vs">vs +6.11</span></div>
+          <span class="pill">paired +2.37 · 95% CI +1.47 … +3.24</span>
+          <p>Validation, two seeds: +8.28 (paired +2.17, CI +1.23 … +3.08). Same maps for both agents; test touched once.</p>
+        </div>
+        <div class="lat">
+          <div style="font-size:7.4pt; font-weight:700; color:var(--ink)">Decision latency, one CPU thread</div>
+          <div class="bar"><div class="fill"></div></div>
+          <div class="lbl"><span><b style="color:var(--red)">1.6 ms</b> DoomForge</span><span>40 ms budget</span></div>
+        </div>
       </div>
-      <div>
-        <h3>Why each piece is there</h3>
-        <ul>
-          <li><b>Asymmetric critic.</b> The value baseline sees privileged progress features (time left, geodesic
-            distance to the objective, keys, coverage), which gives clean advantages. It is never evaluated by the agent.</li>
-          <li><b>Seen-floor + stagnation terms</b> made multi-room maps learnable. Without them the policy parked at
-            locked doors and in corners.</li>
-          <li><b>Imitation term</b> on teacher demos keeps door and key skills from being forgotten while PPO explores.</li>
-          <li><b>Sampling, not argmax.</b> Argmax of a stochastic policy freezes at ties (+1.4 proxy from sampling).</li>
-        </ul>
+      <div class="chart">
+        <h3>Biggest gains</h3>
+        <div class="sub">Score per map vs reference, by test category</div>
+        <img class="fig" src="assets/gains.svg" alt="Score gains">
+      </div>
+      <div class="chart">
+        <h3>Explores the hardest maps</h3>
+        <div class="sub">Share of the map visited, hardest test categories</div>
+        <img class="fig" src="assets/coverage.svg" alt="Coverage on hard maps">
       </div>
     </div>
   </section>
 
   <section>
-    <h2><span class="n">6</span>Results on the held-out test split</h2>
-    <div class="cols" style="grid-template-columns: 1.25fr 1fr;">
+    <div class="row" style="grid-template-columns: 1.15fr 1fr;">
       <div>
-        <div class="chart-key"><span><i class="sw" style="background:#cbd5e1"></i>reference (earlier 3-network design)</span>
-          <span><i class="sw" style="background:#b91c1c"></i>DoomForge</span><span>· exit rate, 10 maps each</span></div>
-        <svg viewBox="0 0 330 236" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="inherit">
-<line x1="92.0" y1="2" x2="92.0" y2="218" stroke="#e2e8f0" stroke-width="0.6"/>
-<text x="92.0" y="228" font-size="6.5" fill="#64748b" text-anchor="middle">0%</text>
-<line x1="144.5" y1="2" x2="144.5" y2="218" stroke="#e2e8f0" stroke-width="0.6"/>
-<text x="144.5" y="228" font-size="6.5" fill="#64748b" text-anchor="middle">25%</text>
-<line x1="197.0" y1="2" x2="197.0" y2="218" stroke="#e2e8f0" stroke-width="0.6"/>
-<text x="197.0" y="228" font-size="6.5" fill="#64748b" text-anchor="middle">50%</text>
-<line x1="249.5" y1="2" x2="249.5" y2="218" stroke="#e2e8f0" stroke-width="0.6"/>
-<text x="249.5" y="228" font-size="6.5" fill="#64748b" text-anchor="middle">75%</text>
-<line x1="302.0" y1="2" x2="302.0" y2="218" stroke="#e2e8f0" stroke-width="0.6"/>
-<text x="302.0" y="228" font-size="6.5" fill="#64748b" text-anchor="middle">100%</text>
-<text x="87" y="12.6" font-size="7" fill="#0f172a" text-anchor="end">C0 sanity</text>
-<rect x="92" y="4" width="210.0" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="9.8" width="210.0" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="305.0" y="14.6" font-size="6.2" fill="#b91c1c" font-weight="700">100%</text>
-<text x="87" y="27.6" font-size="7" fill="#0f172a" text-anchor="end">C1 duel</text>
-<rect x="92" y="19" width="42.0" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="24.8" width="189.0" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="284.0" y="29.6" font-size="6.2" fill="#b91c1c" font-weight="700">90%</text>
-<text x="87" y="42.6" font-size="7" fill="#0f172a" text-anchor="end">C2 arena</text>
-<rect x="92" y="34" width="126.0" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="39.8" width="105.0" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="200.0" y="44.6" font-size="6.2" fill="#b91c1c" font-weight="700">50%</text>
-<text x="87" y="57.6" font-size="7" fill="#0f172a" text-anchor="end">C3 corridor door</text>
-<rect x="92" y="49" width="210.0" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="54.8" width="210.0" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="305.0" y="59.6" font-size="6.2" fill="#b91c1c" font-weight="700">100%</text>
-<text x="87" y="72.6" font-size="7" fill="#0f172a" text-anchor="end">C4 room door</text>
-<rect x="92" y="64" width="63.0" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="69.8" width="210.0" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="305.0" y="74.6" font-size="6.2" fill="#b91c1c" font-weight="700">100%</text>
-<text x="87" y="87.6" font-size="7" fill="#0f172a" text-anchor="end">C5 key → lock</text>
-<rect x="92" y="79" width="210.0" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="84.8" width="168.0" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="263.0" y="89.6" font-size="6.2" fill="#b91c1c" font-weight="700">80%</text>
-<text x="87" y="102.6" font-size="7" fill="#0f172a" text-anchor="end">C6 two keys</text>
-<rect x="92" y="94" width="210.0" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="99.8" width="210.0" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="305.0" y="104.6" font-size="6.2" fill="#b91c1c" font-weight="700">100%</text>
-<text x="87" y="117.6" font-size="7" fill="#0f172a" text-anchor="end">C7 exploration</text>
-<rect x="92" y="109" width="0.8" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="114.8" width="21.0" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="116.0" y="119.6" font-size="6.2" fill="#b91c1c" font-weight="700">10%</text>
-<text x="87" y="132.6" font-size="7" fill="#0f172a" text-anchor="end">C8 backtrack</text>
-<rect x="92" y="124" width="63.0" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="129.8" width="210.0" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="305.0" y="134.6" font-size="6.2" fill="#b91c1c" font-weight="700">100%</text>
-<text x="87" y="147.6" font-size="7" fill="#0f172a" text-anchor="end">C9 ambush</text>
-<rect x="92" y="139" width="0.8" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="144.8" width="0.8" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="87" y="162.6" font-size="7" fill="#0f172a" text-anchor="end">C10 scarce ammo</text>
-<rect x="92" y="154" width="0.8" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="159.8" width="0.8" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="87" y="177.6" font-size="7" fill="#0f172a" text-anchor="end">C11 gauntlet</text>
-<rect x="92" y="169" width="0.8" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="174.8" width="0.8" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="87" y="192.6" font-size="7" fill="#0f172a" text-anchor="end">C12 Freedoom</text>
-<rect x="92" y="184" width="0.8" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="189.8" width="0.8" height="5.6" rx="1" fill="#b91c1c"/>
-<text x="87" y="207.6" font-size="7" fill="#0f172a" text-anchor="end">C13 OOD</text>
-<rect x="92" y="199" width="0.8" height="5" rx="1" fill="#cbd5e1"/>
-<rect x="92" y="204.8" width="0.8" height="5.6" rx="1" fill="#b91c1c"/>
-</svg>
+        <h2><span class="k">What makes it different</span>Engineered, not off the shelf</h2>
+        <p><b>Exact DOOM odometry</b> and a heading-up two-scale ego map give a small network real spatial memory.
+          <b>Asymmetric actor-critic</b>: the critic sees privileged progress signals during training, while the actor
+          sees only what the scorer provides. <b>Dense, learnable shaping</b> (newly seen floor, geodesic progress,
+          standing-still cost) and an <b>imitation regulariser</b> let PPO add exploration without losing door and key skills.</p>
       </div>
       <div>
-        <div class="card" style="margin-bottom:3mm">
-          <div class="muted small">Tier-weighted proxy (140 test episodes)</div>
-          <div style="display:flex; align-items:baseline; gap:3mm; margin:1mm 0">
-            <span class="big">+8.48</span><span class="muted">vs +6.11</span></div>
-          <span class="delta">paired +2.37 · 95 % CI +1.47 … +3.24</span>
-          <p class="small muted" style="margin:1.6mm 0 0">Validation, two seeds: +8.28 vs +6.11 (paired +2.17, CI +1.23 … +3.08).
-            Coverage on ambush / scarce-ammo / OOD maps is 3–4× the reference.</p>
+        <h2><span class="k">Rules</span>Fully learned at inference</h2>
+        <div class="chips">
+          <span class="chip">✓ every action sampled from the network</span>
+          <span class="chip">✓ no rule tree, planner or aimbot</span>
+          <span class="chip">✓ teacher &amp; A* training-only</span>
+          <span class="chip">✓ custom architecture &amp; PPO</span>
+          <span class="chip">✓ validator PASS</span>
+          <span class="chip">✓ template-synced env</span>
         </div>
-        <h3>What each design choice bought</h3>
-        <table>
-          <tr><td>Corrected dead reckoning</td><td class="r pos">drift 431 → 31 units</td></tr>
-          <tr><td>Heading-up ego map</td><td class="r pos">BC alone solves doors + 2-key chains</td></tr>
-          <tr><td>Seeded sampling vs argmax</td><td class="r pos">+6.38 → +7.80</td></tr>
-          <tr><td>Seen-floor + stagnation shaping</td><td class="r pos">first exploration exits</td></tr>
-          <tr><td>Heavier death cost</td><td class="r pos">arena deaths 8 → 5 / 10</td></tr>
-        </table>
+        <p class="cap" style="margin-top:2mm"><code>submission/agent.py</code> is map → network → sample, 154 lines.</p>
       </div>
     </div>
   </section>
 
-  <div class="cols">
-    <section>
-      <h2><span class="n">7</span>Rules and compliance</h2>
-      <ul>
-        <li>Every action is <b>sampled from the trained network</b>. There is no rule tree, planner, aimbot, router or reflex;
-          <code>agent.py</code> is map → network → sample.</li>
-        <li>Teacher, A* and distance fields live in <code>training/</code>, never imported by <code>submission/</code>.</li>
-        <li>Privileged state is used only for training rewards, labels and the critic.</li>
-        <li><code>env/</code> and <code>validate.py</code> synced with the latest template. Weights via Git LFS (8.4 MB).</li>
-      </ul>
-    </section>
-    <section>
-      <h2><span class="n">8</span>Limits and next steps</h2>
-      <ul>
-        <li><b>No exits yet</b> on ambush, scarce-ammo, gauntlet, Freedoom and OOD maps; the agent still earns partial
-          credit there for coverage, kills and doors. These need far more than ~1.6 M PPO steps on a laptop.</li>
-        <li><b>Arena survival:</b> half of the test arenas end in death.</li>
-        <li>Next: longer PPO at higher throughput, and a teacher that only uses what it has seen, for exploration demos.</li>
-      </ul>
-    </section>
-  </div>
-
-  <div class="footer"><span>Proxy weights are our assumption; the official scorer is hidden. Full tables: docs/RESULTS.md</span>
-    <span>github.com/Science-wizard/DoomForge · page 2 / 2</span></div>
+  <div class="footer"><span>Scores use our 14-category diagnostic suite and proxy weights; per-category tables: docs/RESULTS.md</span>
+    <span>github.com/Science-wizard/DoomForge · 2 / 2</span></div>
 </div>
 
 </body>

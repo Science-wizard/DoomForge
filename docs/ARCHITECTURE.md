@@ -42,7 +42,7 @@ seeded sampling per head (temperature 1) ─► 9 buttons
 |---|---|
 | Heading | per-decision deltas replayed from the executed action: 7.031°, 12.305°, then 14.063° per decision while a turn is held in either direction (warm-up values for the first two decisions). 0.02° error after 500 decisions. |
 | Translation | Doom per tic: momentum += thrust; position += momentum; momentum ×= 0.90625. Thrust recovered from the start/end momentum (`vitals[14:16]` in each heading); four tics integrated. |
-| Wall clip | step length limited to the previous ray distance in the travel direction − 17 units (momentum is reported while pinned). ~30 units position error after 500 decisions. |
+| Wall clip | step length limited to the previous ray distance in the travel direction − 17 units (momentum is reported while pinned). Position error after 500 decisions: 99 units on the agent's own validation episodes (naive integration: 225); 31 units on a random-action test drive (naive: 431). |
 | Grid | 160×160 cells × 64 units = 10,240 units, origin at spawn |
 | Channels | free (ray paths), wall, door, locked door (cleared when rays later pass), item, key, trail (own cells), frontier (free cells next to unknown) |
 | Readout | heading-up crops: fine 32×32 at 64 u/cell; coarse 32×32 at 256 u/cell (4×4 max-pool). Concatenated: 16×32×32. |

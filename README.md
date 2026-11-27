@@ -88,7 +88,8 @@ flowchart LR
 
 - **EgoMap.** The agent reconstructs its own pose from the actions it executed and
   its velocity: Doom's turn acceleration, per-tic friction, and a clip when it
-  pushes into a wall. Error is ~30 units after 500 decisions. Rays, items, keys and its own
+  pushes into a wall. On the agent's own episodes that is 2.3× less drift than naive
+  integration (99 vs 225 units after 500 decisions). Rays, items, keys and its own
   trail are projected into a grid, read out as two heading-up crops. This is
   perception, not planning.
 - **Atlas-E network.** Circular 1-D conv over rays, self-attention over entities,
