@@ -69,22 +69,3 @@ points earned so far, and penalties such as dying still apply. The agent is rest
 ## Replays
 
 The scorer records a replay of every run. Organizers watch the top teams' replays during manual review.
-
----
-
-## Our diagnostic suite
-
-The official scorer is hidden, so development uses a 14-category suite
-(C0–C13) that is harder and more diagnostic than the validator. It mirrors the
-four official tiers: combat (C1, C2), doors (C3, C4), exploration (C7),
-progression with keys (C5, C6, C8), combined skills under pressure (C9–C11)
-and transfer (C12 Freedoom, C13 OOD).
-
-- Splits by seed (train / val / test / OOD) with WAD-hash leakage checks.
-- Headline: tier-weighted proxy (1.0/1.2/1.5/2.0) with a stratified bootstrap
-  CI; every component is reported per category.
-- Promotion: paired bootstrap gate with per-category regression checks.
-- Test and OOD runs require `--allow-test` and are logged in `test_touch.log`.
-
-Details: [`../training/suite/README.md`](../training/suite/README.md).
-Current numbers: [`RESULTS.md`](RESULTS.md).

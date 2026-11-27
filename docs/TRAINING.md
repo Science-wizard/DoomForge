@@ -37,8 +37,8 @@ uv run python -m training.suite.leakage --train training/data/suite/train/manife
 
 Seeds: train 0+, val 10 000+, test 30 000+, OOD 40 000+. Freedoom: train
 MAP01–16, val MAP17–22, test MAP23–32. The leakage check hashes every WAD;
-train∩val and train∩test are empty. Categories and metrics:
-[`training/suite/README.md`](../training/suite/README.md).
+train∩val and train∩test are empty. Categories, metrics and the promotion gate:
+[`RESULTS.md`](RESULTS.md#how-we-measure).
 
 ## 3. Teacher demonstrations
 
@@ -166,3 +166,32 @@ Promotion requires the paired 95% CI of the tier-weighted proxy difference to
 exclude zero. A category regression larger than 10 points with a CI excluding
 zero blocks it. The shipped checkpoint is saved with
 `config = {arch: "ego", temperature: 1.0}`.
+
+## Code map
+
+```
+training/
+  maps/gen_wad.py          procedural node-less WADs, tiers 1–4
+  maps/drills.py           corridor doors, key alcove, key chain, backtrack layouts
+  maps/doorroom.py         door on a room wall, random start pose
+  maps/prepare_freedoom.py Freedoom variants (raw / doors-open / no monsters)
+  teacher/                 privileged expert: mapdata, navgrid (A*), teacher (door FSM, combat)
+  collect.py               teacher demonstrations + auxiliary and goal labels
+  egomaps.py               replay demos through EgoMap; bit-pack 16-channel maps
+  bc.py                    behaviour cloning (--arch ego)
+  ppo2.py                  parallel PPO: asymmetric critic, shaping, imitation, KL anchor, EMA
+  evaluate.py              episode runner, proxy score; coverage.py sector tracking
+  obs.py, splits.py        observation flattening; seed ranges and Freedoom splits
+  suite/                   spec, generate, run, metrics, compare, leakage, probes
+tools/
+  auto_eval.py             score every PPO snapshot on validation
+  record_videos.py         gameplay clips through the real agent
+  test_agent_contract.py   NaN/inf/mask corruption + determinism stress test
+```
+
+Earlier-design tools kept for reproducibility but outside this pipeline:
+`ppo.py`, `dagger.py`, `moe.py`, `bench.py`, `suite/hybrid.py`.
+
+Data and checkpoints are gitignored: `training/data/demos_*` (shards, `ego/`
+maps), `training/data/suite/<split>` (WADs + manifests), `training/runs/<run>`
+(checkpoints, `train.jsonl`, `auto_eval.jsonl`).

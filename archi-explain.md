@@ -11,7 +11,7 @@ If you only have one minute, read **§2 (the pipeline in one picture)** and
 Companion documents (more technical, less explanatory):
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
 [`docs/TRAINING.md`](docs/TRAINING.md),
-[`explanation.md`](explanation.md).
+[`docs/RESULTS.md`](docs/RESULTS.md).
 
 ---
 
@@ -583,4 +583,4 @@ gate over a 14-category suite.
 | `training/evaluate.py` | Episode runner, proxy score, coverage. |
 | `training/suite/` | 14-category diagnostic suite and statistics. |
 | `tools/auto_eval.py` | Scores snapshots on validation. |
-| `validate.py` | Official validator (untouched). |
+| `validate.py` | Official validator (synced with the latest template). |

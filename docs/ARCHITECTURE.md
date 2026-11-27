@@ -2,7 +2,7 @@
 
 The shipped agent is one recurrent network that reads the official observation
 plus a deterministic ego-motion map. Training: [`TRAINING.md`](TRAINING.md).
-Teaching guide: [`../explanation.md`](../explanation.md).
+Plain-language guide: [`../archi-explain.md`](../archi-explain.md).
 
 ## 1. Contract
 
@@ -113,4 +113,4 @@ p50 1.6 ms / p99 1.9 ms in the official validator.
 | `submission/model.py` | network definitions (`arch="ego"` shipped) |
 | `submission/mapmem.py` | `EgoMap` (and `MapBuilder`, its odometry base class) |
 | `submission/weights/doomforge.pt` | shipped checkpoint (Git LFS, 8.4 MB) |
-| `training/` | maps, teacher, demos, BC, PPO, suite (see `training/README.md`) |
+| `training/` | maps, teacher, demos, BC, PPO, suite (code map in `docs/TRAINING.md`) |

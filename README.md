@@ -162,7 +162,7 @@ Validation (two engine seeds): **+8.28** vs +6.11 (paired +2.17, CI
 ✓ DoomAgent interface: __init__, reset, act
 ✓ Initialization: 0.4 s (limit 60 s)
 ✓ Episode on 'two_rooms.wad:MAP01' runs to completion (301 decisions; this seeded episode ends in death)
-✓ Step latency: p50 1.6 ms, p99 1.9 ms, max 3 ms (limit 5 s/act, 40 ms average)
+✓ Step latency: p50 1.6 ms, p99 2.0 ms, max 3 ms (limit 5 s/act, 40 ms average)
 PASSED
 ```
 
@@ -175,15 +175,12 @@ decision. DoomForge runs on CPU with an 8.4 MB checkpoint.
 
 | Document | Contents |
 |---|---|
-| [`explanation.md`](explanation.md) | **start here**: the whole system explained, with likely judge questions |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | map, network, heads, acting, parameter table |
-| [`docs/TRAINING.md`](docs/TRAINING.md) | maps, teacher, demos, BC, PPO, rewards, exact stage settings, commands |
-| [`docs/RESULTS.md`](docs/RESULTS.md) | test/validation tables, design-choice effects, limitations |
-| [`training/suite/README.md`](training/suite/README.md) | the 14-category diagnostic suite |
-| [`training/README.md`](training/README.md) | training code layout |
-| [`docs/CONTRACT.md`](docs/CONTRACT.md) · [`docs/RULES.md`](docs/RULES.md) · [`docs/EVALUATION.md`](docs/EVALUATION.md) | official contract, rules and scoring |
-| [`docs/SUBMISSION.md`](docs/SUBMISSION.md) | submission checklist and final artifact |
-| [`docs/brief/DoomForge_Brief.pdf`](docs/brief/DoomForge_Brief.pdf) | 2-page brief |
+| [`docs/brief/DoomForge_Brief.pdf`](docs/brief/DoomForge_Brief.pdf) | **2-page project brief** |
+| [`archi-explain.md`](archi-explain.md) | **start here**: the whole system in plain language, glossary, likely judge questions |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | ego map, network modules, parameter table, acting |
+| [`docs/TRAINING.md`](docs/TRAINING.md) | maps, teacher, demos, BC, PPO, rewards, exact stage settings, code map, commands |
+| [`docs/RESULTS.md`](docs/RESULTS.md) | the 14-category suite, promotion gate, test/validation tables, limitations |
+| [`docs/CONTRACT.md`](docs/CONTRACT.md) · [`docs/RULES.md`](docs/RULES.md) · [`docs/EVALUATION.md`](docs/EVALUATION.md) · [`docs/SUBMISSION.md`](docs/SUBMISSION.md) | official template specs (unchanged) |
 | [`NOTICE.md`](NOTICE.md) · [`LICENSE`](LICENSE) | attribution and licence |
 
 ## Reproduce
@@ -205,16 +202,18 @@ Training from scratch (maps → demos → BC → PPO) is in
 submission/   agent.py · model.py · mapmem.py · weights/doomforge.pt (Git LFS)
 training/     maps/ · teacher/ · collect.py · egomaps.py · bc.py · ppo2.py · evaluate.py · suite/
 tools/        auto_eval.py · record_videos.py · test_agent_contract.py
-docs/         architecture, training, results, official specs, brief, videos
-validate.py   official validator (untouched)
+docs/         architecture, training, results, official specs, brief/, assets/videos/
+validate.py   official validator (synced with the latest template)
 ```
 
 ## Compliance
 
 - Built from `Reinforce-SST/devforge-doom-template`; `env/`, `validate.py` and
-  the `DoomAgent` contract are untouched.
+  the template tests are synced with its latest version, and the `DoomAgent`
+  contract is unchanged.
 - Every action is sampled from the trained network's output. There is no rule
-  tree, planner, aimbot, router or reflex in the shipped agent. The teacher, A*
+  tree, planner, aimbot, router or reflex: `submission/agent.py` is
+  map → network → sample. The teacher, A*
   and distance fields live in `training/` and are never imported by
   `submission/`.
 - No network or engine access, and no disk writes, at inference. Seeded sampling makes runs
