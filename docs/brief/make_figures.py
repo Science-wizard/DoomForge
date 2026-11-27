@@ -251,7 +251,7 @@ NAMES = {"C1_duel": "Duel", "C4_room_door": "Door on a room wall", "C8_backtrack
 
 def fig_gains() -> None:
     """Largest per-category score gains on the held-out test split, and hard-map coverage."""
-    ours, ref = suite_summary("test_ego6_u50"), suite_summary("test_hybrid_p4")
+    ours, ref = suite_summary("test_ego8_u10"), suite_summary("test_hybrid_p4")
     gains = sorted(((ours[c]["proxy"] - ref[c]["proxy"], c) for c in ours), reverse=True)[:6]
     fig, ax = plt.subplots(figsize=(3.4, 1.95), dpi=220)
     y = np.arange(len(gains))[::-1]

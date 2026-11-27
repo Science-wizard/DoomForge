@@ -178,15 +178,15 @@
     <div class="eyebrow">Yugaantar DevForge 2026 · Track 1 · Can it play DOOM?</div>
     <h1>DoomForge</h1>
     <p class="tagline">One <b>2-million-parameter recurrent network</b> that explores DOOM levels it has never seen, builds its own map as it
-      moves, fetches keys, opens locks and fights to the exit, deciding in <b>1.6 ms on one CPU thread</b>. Behaviour cloning from a
+      moves, fetches keys, opens locks and fights to the exit, deciding in <b>1.5 ms on one CPU thread</b>. Behaviour cloning from a
       privileged teacher, then parallel PPO with an asymmetric critic.</p>
   </header>
 
   <div class="kpis">
-    <div class="kpi"><div class="v">+8.48<small>+39%</small></div><div class="l">held-out test score vs +6.11 for our reference design (paired 95% CI +1.47 … +3.24)</div></div>
-    <div class="kpi"><div class="v">5 skills</div><div class="l">at 100% on unseen test maps: sanity, corridor door, room door, two-key chain, backtrack</div></div>
-    <div class="kpi"><div class="v">4.2×</div><div class="l">more of the map explored on ambush levels than our reference; 2.8–3.2× on the other hard tiers</div></div>
-    <div class="kpi"><div class="v">1.6 ms</div><div class="l">per decision on one CPU thread, 25× under the 40 ms budget; 8.4 MB checkpoint</div></div>
+    <div class="kpi"><div class="v">+9.19<small>+50%</small></div><div class="l">held-out test score vs +6.11 for our reference design (paired 95% CI +2.20 … +3.99)</div></div>
+    <div class="kpi"><div class="v">6 skills</div><div class="l">at 100% on unseen test maps: sanity, duel, corridor door, room door, two-key chain, backtrack</div></div>
+    <div class="kpi"><div class="v">4.6×</div><div class="l">more of the map explored on gauntlet levels than our reference; 3.4–4.1× on the other hard tiers</div></div>
+    <div class="kpi"><div class="v">1.5 ms</div><div class="l">per decision on one CPU thread, 26× under the 40 ms budget; 8.4 MB checkpoint</div></div>
   </div>
 
   <section>
@@ -288,7 +288,7 @@
       <div class="step"><div class="n">2</div><div class="t">Privileged teacher</div><div class="d">Nav grid, A* with key gating, door state machine, circle-strafe combat: 436 k labelled demo steps. Training only.</div></div>
       <div class="step"><div class="n">3</div><div class="t">Offline ego maps</div><div class="d">Every demo replayed through the shipped EgoMap, so training sees exactly what the agent will.</div></div>
       <div class="step"><div class="n">4</div><div class="t">Behaviour cloning</div><div class="d">CE on 6 heads + 0.2·aux + 0.5·value + goal; USE ×11 near doors; AdamW 3e-4, 5 epochs.</div></div>
-      <div class="step"><div class="n">5</div><div class="t">Parallel PPO ×3</div><div class="d">72 envs, asymmetric critic, dense shaping, imitation + KL regularisers; ~1.6 M steps.</div></div>
+      <div class="step"><div class="n">5</div><div class="t">Parallel PPO ×4</div><div class="d">72 envs, asymmetric critic, dense shaping, imitation + KL regularisers; ~1.8 M steps.</div></div>
     </div>
   </section>
 
@@ -328,13 +328,14 @@
         <div class="cap">Geodesic progress follows a distance field toward the exit (if reachable with held keys) or the next needed key.</div>
       </div>
       <div>
-        <h3>Skills grow through three PPO stages</h3>
+        <h3>Skills grow through PPO stages</h3>
         <div class="sub">exit rate on training maps, live policy</div>
         <img src="assets/learning.svg" style="width:100%" alt="">
         <dl class="spec" style="margin-top:1mm">
           <dt>A</dt><dd>from BC, KL 0.3 → 0.02 · 0.23 M steps</dd>
           <dt>B</dt><dd>+ seen-floor, stagnation, imitation · 0.92 M</dd>
-          <dt>C</dt><dd>heavier death/damage cost · 0.46 M → <b>shipped</b></dd>
+          <dt>C</dt><dd>heavier death/damage cost · 0.46 M</dd>
+          <dt>D</dt><dd>costs for circling, wall-hugging, fighting in the open · 0.23 M → <b>shipped</b></dd>
         </dl>
       </div>
     </div>
@@ -383,14 +384,14 @@
       <div>
         <div class="score">
           <div style="font-size:6.6pt; color:#94a3b8">Tier-weighted score, 140 unseen test episodes</div>
-          <div style="margin-top:0.8mm"><span class="big">+8.48</span><span class="vs">vs +6.11</span></div>
-          <span class="pill">paired +2.37 · 95% CI +1.47 … +3.24</span>
-          <p>Validation, two engine seeds: +8.28 (paired +2.17).</p>
+          <div style="margin-top:0.8mm"><span class="big">+9.19</span><span class="vs">vs +6.11</span></div>
+          <span class="pill">paired +3.08 · 95% CI +2.20 … +3.99</span>
+          <p>Validation, two engine seeds: +9.46 (paired +3.35).</p>
         </div>
         <div class="lat" style="margin-top:1.8mm">
           <h3>Decision latency, one CPU thread</h3>
           <div class="bar"><div class="fill"></div></div>
-          <div class="lbl"><span><b style="color:var(--red)">1.6 ms</b> p50 · 2.0 ms p99</span><span>40 ms budget</span></div>
+          <div class="lbl"><span><b style="color:var(--red)">1.5 ms</b> p50 · 1.8 ms p99</span><span>40 ms budget</span></div>
         </div>
       </div>
       <div><h3>Biggest gains</h3><div class="sub">score per map vs reference</div><img src="assets/gains.svg" style="width:100%" alt=""></div>
