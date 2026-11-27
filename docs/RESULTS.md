@@ -158,6 +158,12 @@ one enemy at a time).
 Later snapshots (u40, u50) and a 50/50 soup with the previous net scored lower.
 The headline CIs include zero; the gauntlet gain is consistent across splits.
 
+Stage D2 (shipped): 10 more updates from u30 with less weight on mastered
+categories (ppo_ego8 u10 EMA). Val 2 seeds **+9.46** (vs +9.05 for u30, +8.28
+before Stage D); test **+9.19** (vs +8.61 / +8.48). Test exits: arena 90%,
+two-key 100%, key→lock 80%; C11 0/10 on test (1/10 on val), C10 proxy +3.0.
+u20 scored lower (+8.63 val).
+
 Teacher audit: with full map access the scripted teacher itself only exited
 C11 1/10 and C9 0/10 on val (4/10 and 7/10 in god mode). Two deadlocks were
 fixed: the door reflex idled through its USE cooldown (35 presses, no
