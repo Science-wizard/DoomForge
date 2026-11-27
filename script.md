@@ -178,21 +178,22 @@ Pacing: roughly 140 words per minute. Times in brackets are cumulative.
 
 ## 6. Results (7:45 – 9:15)
 
-**Slide:** the results row from page 2: the +8.48 score panel, "Biggest gains", "Explores the hardest maps".
+**Slide:** the results row from page 2: the +9.19 score panel, "Biggest gains", "Explores the hardest maps".
 
 > We evaluate on held-out test maps the agent never trained on, and we touched
 > that test set once per decision, logged.
 >
-> On the tier-weighted score, DoomForge reaches **+8.48 against +6.11** for our
-> earlier design. That's 39% higher, and the paired 95% confidence interval runs
-> from +1.5 to +3.2, so the gain is real, not noise.
+> On the tier-weighted score, DoomForge reaches **+9.19 against +6.11** for our
+> earlier design. That's 50% higher, and the paired 95% confidence interval runs
+> from +2.2 to +4.0, so the gain is real, not noise.
 >
-> It solves five skill categories on every unseen test map. The biggest jumps come
-> on the hard skills: keys behind the spawn, doors on room walls, duels and
-> multi-room exploration. On the hardest tiers it explores three to four times more
-> of each map.
+> It solves six skill categories on every unseen test map. The biggest jumps come
+> on the hard skills: keys behind the spawn, duels, doors on room walls and
+> multi-room exploration. On the hardest tiers it explores three and a half to
+> four and a half times more of each map, and on validation it finishes its first
+> gauntlet and scarce-ammo levels.
 >
-> And it does all this in 1.6 milliseconds per decision on one CPU thread.
+> And it does all this in 1.5 milliseconds per decision on one CPU thread.
 
 **Slide (optional):** the skill replays strip from page 2.
 
@@ -258,10 +259,10 @@ had learned to fight (80% → 20% when routed).
 **"How do you know you didn't overfit your own benchmark?"**
 Training, validation and test maps come from disjoint seeds, and every map file is
 hashed to prove there's no overlap. Models were selected on validation only; test
-was touched once per decision and logged. The test gain (+2.37) matches validation (+2.17).
+was touched once per decision and logged. The test gain (+3.08) matches validation (+3.35).
 
 **"What would you do with more time?"**
-Train longer. We ran about 1.6 million PPO steps on a laptop at around 500 steps
+Train longer, from a stronger teacher. We ran about 1.8 million PPO steps on a laptop at around 500 steps
 per second, and the hardest maps (ambushes, gauntlets, hand-made Freedoom levels)
 need far more experience. The architecture is ready; it's a compute question.
 
@@ -275,10 +276,10 @@ with a GRU and a non-stationary map distribution.
 | | |
 |---|---|
 | Parameters | 2.0 M (acting) |
-| Decision time | 1.6 ms p50, 2.0 ms p99, one CPU thread (budget 40 ms) |
-| Test score | +8.48 vs +6.11; paired +2.37, 95% CI +1.47 … +3.24 |
-| Validation | +8.28 (two seeds) |
+| Decision time | 1.5 ms p50, 1.8 ms p99, one CPU thread (budget 40 ms) |
+| Test score | +9.19 vs +6.11; paired +3.08, 95% CI +2.20 … +3.99 |
+| Validation | +9.46 (two seeds); first C10/C11 exits (10%) |
 | Demonstrations | 436 k steps, 13 datasets |
-| PPO | ~1.6 M steps, 72 parallel environments, 3 stages |
+| PPO | ~1.8 M steps, 72 parallel environments, 4 stages |
 | Maps | 1,966 train / 136 validation / 400 test, 14 categories |
 | Odometry | 2.3× less drift than naive integration (99 vs 225 units / 500 decisions) |

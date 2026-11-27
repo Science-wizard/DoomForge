@@ -377,20 +377,22 @@ and being scored.
   `0.6 + (1 − recent success rate)`, plus 15% freshly generated maps. The agent
   spends more time on what it is bad at, and never overfits a fixed map set.
 
-### 9.3 Why three stages?
+### 9.3 Why four stages?
 
-The shipped weights come from BC, then three PPO runs, each starting from the
+The shipped weights come from BC, then four PPO runs, each starting from the
 previous best checkpoint:
 
 | Stage | Starts from | What changes | Snapshot shipped |
 |---|---|---|---|
 | A | BC | conservative: lr 1e-4, strong KL to BC (0.3 → 0.02), small entropy; no seen-floor/stagnation terms | — |
 | B | A, update 50 | lr 2e-4, KL 0.03, imitation 0.2 → 0.05, adds seen-floor, stagnation and locked-USE terms, key reward 3 → 5 | — |
-| C | B, update 100 | as B, KL anchored to A, imitation 0.15 → 0.05, harsher death/damage costs | **update 50 (0.46 M steps)** |
+| C | B, update 100 | as B, KL anchored to A, imitation 0.15 → 0.05, harsher death/damage costs | update 50 (0.46 M steps) |
+| D | C, update 50 | costs for re-entering well-trodden cells (circling), scraping walls, and taking hits with several enemies in view (fighting in the open); then 10 more updates from D u30 with less weight on mastered maps ("D2") | **D2 update 10 (~0.19 M steps for D + D2)** |
 
-Total: about **1.6 M PPO steps**. Think of it as a curriculum for the *trainer*,
+Total: about **1.8 M PPO steps**. Think of it as a curriculum for the *trainer*,
 not just the agent: first learn to imitate safely, then explore with dense
-guidance, then tighten survival costs without forgetting the skills.
+guidance, then tighten survival costs without forgetting the skills, then polish
+how it moves and fights (stage D came from reviewing replays).
 
 **Why not train PPO from scratch?** Sparse reward + long horizon + laptop compute.
 BC supplies the prior; PPO supplies the correction.
@@ -436,11 +438,11 @@ of maps, the effect would probably still be positive".
 | Teacher demonstrations | 13 datasets, 436k steps |
 | BC | 128-step windows, 5 epochs, AdamW 3e-4, validation loss 0.63 |
 | PPO | 9 workers × 4–8 envs, ~500 steps/s, GAE γ 0.995 λ 0.95, clip 0.1 |
-| PPO total | ~1.6 M steps over 3 stages; shipped = stage C, update 50 (0.46 M) |
+| PPO total | ~1.8 M steps over 4 stages; shipped = stage D2, update 10 |
 | Maps | 14 categories; 1,966 train / 136 val / 400 test (seed-disjoint, hash-checked) |
-| Inference | 0.69 ms network + ~0.55 ms map; p50 1.6 ms / p99 1.9 ms total |
-| Held-out test | tier-weighted proxy +8.48 vs +6.11 previous; paired +2.37 (95% CI +1.47…+3.24) |
-| Validation | +8.28 vs +6.11; paired +2.17 (CI +1.23…+3.08) |
+| Inference | 0.69 ms network + ~0.55 ms map; p50 1.5 ms / p99 1.8 ms total |
+| Held-out test | tier-weighted proxy +9.19 vs +6.11 previous; paired +3.08 (95% CI +2.20…+3.99) |
+| Validation | +9.46 vs +6.11; paired +3.35 (CI +2.45…+4.30) |
 | Official validator | PASS, init 0.4 s |
 
 ---
@@ -485,12 +487,14 @@ generator is re-seeded per map, so replays are reproducible.
 
 **"How do you know you didn't overfit?"**
 Seed-disjoint splits, WAD-hash leakage checks, selection on validation only, and
-a single logged test look. Test gain (+2.37) is consistent with validation
-(+2.17).
+a single logged test look per shipping decision. Test gain (+3.08) is
+consistent with validation (+3.35).
 
 **"What is the biggest weakness?"**
-Combined-skill maps (ambush, gauntlet, Freedoom, OOD). Exits there need more
-samples than ~1.6 M PPO steps on a laptop allow. The agent still earns partial
+Combined-skill maps (ambush, gauntlet, Freedoom, OOD): 10% exits on validation
+gauntlet and scarce-ammo maps, none yet on test. They need more samples than
+~1.8 M PPO steps on a laptop allow, and a better teacher (the scripted one
+itself exits only 1 in 10 validation gauntlets). The agent still earns partial
 credit (coverage, kills, doors, keys).
 
 **"What is actually novel?"**
